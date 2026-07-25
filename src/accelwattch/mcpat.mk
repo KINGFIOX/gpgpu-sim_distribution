@@ -13,23 +13,23 @@ endif
 LIBS = -I/usr/lib/ -I/usr/lib64/
 INCS = -lm
 
-CC=
-CXX=
+CC = gcc
+CXX = g++
 
-ifeq ($(shell getconf LONG_BIT),64) 
-	CXX = g++ -m64
-	CC  = gcc -m64
-else 
-	CXX = g++ -m32
-	CC  = gcc -m32
-endif 
+# -msse2/-mfpmath=sse are x86-only; skip on aarch64 (Apple Silicon) etc.
+ARCH := $(shell uname -m)
+ifeq ($(filter $(ARCH),x86_64 amd64 i386 i686),$(ARCH))
+  SSE_FLAGS = -msse2 -mfpmath=sse
+else
+  SSE_FLAGS =
+endif
 
 ifeq ($(TAG),dbg)
   DBG = -Wall 
   OPT = -ggdb -fPIC -g -O0 -DNTHREADS=1 -Icacti -lz
 else
   DBG = 
-  OPT = -O3 -fPIC -msse2 -mfpmath=sse -DNTHREADS=$(NTHREADS) -Icacti -lz
+  OPT = -O3 -fPIC $(SSE_FLAGS) -DNTHREADS=$(NTHREADS) -Icacti -lz
   #OPT = -O0 -DNTHREADS=$(NTHREADS)
 endif
 

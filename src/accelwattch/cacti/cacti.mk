@@ -13,25 +13,27 @@ endif
 LIBS = 
 INCS = -lm
 
+# -msse2/-mfpmath=sse are x86-only; skip on aarch64 (Apple Silicon) etc.
+ARCH := $(shell uname -m)
+ifeq ($(filter $(ARCH),x86_64 amd64 i386 i686),$(ARCH))
+  SSE_FLAGS = -msse2 -mfpmath=sse
+else
+  SSE_FLAGS =
+endif
+
 ifeq ($(TAG),dbg)
   DBG = -Wall 
   OPT = -ggdb -g -O0 -DNTHREADS=1  -gstabs+
 else
   DBG = 
-  OPT = -O3 -msse2 -mfpmath=sse -DNTHREADS=$(NTHREADS)
+  OPT = -O3 $(SSE_FLAGS) -DNTHREADS=$(NTHREADS)
 endif
 
 #CXXFLAGS = -Wall -Wno-unknown-pragmas -Winline $(DBG) $(OPT) 
 CXXFLAGS = -Wno-unknown-pragmas $(DBG) $(OPT) 
 
-ifeq ($(shell getconf LONG_BIT),64) 
-	CXX = g++ -m64
-	CC  = gcc -m64
-else 
-	CXX = g++ -m32
-	CC  = gcc -m32
-endif 
-
+CC = gcc
+CXX = g++
 
 SRCS  = area.cc bank.cc mat.cc main.cc Ucache.cc io.cc technology.cc basic_circuit.cc parameter.cc \
 		decoder.cc component.cc uca.cc subarray.cc wire.cc htree2.cc \

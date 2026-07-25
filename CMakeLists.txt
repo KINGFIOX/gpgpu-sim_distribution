@@ -26,6 +26,8 @@ add_custom_target(gen_build_string ALL
                     COMMAND ${CMAKE_COMMAND} -D INPUT_DIR=${CMAKE_CURRENT_SOURCE_DIR} -D OUTPUT_DIR=${CMAKE_BINARY_DIR} -P ${CMAKE_CURRENT_SOURCE_DIR}/gpgpusim_gen_build_string.cmake
                     COMMENT "Generating build string file to ${CMAKE_CURRENT_BINARY_DIR}")
 
+set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
+
 # CMake target
 # GPGPU-Sim CUDA Runtime lib
 # Use the entrypoint object files sources else CMake will complain

@@ -257,6 +257,7 @@ CUctx_st *GPGPUSim_Context(gpgpu_context *ctx) {
   return the_context;
 }
 
+/// singleton pattern
 gpgpu_context *GPGPU_Context() {
   static gpgpu_context *gpgpu_ctx = NULL;
   if (gpgpu_ctx == NULL) {

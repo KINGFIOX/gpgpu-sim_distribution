@@ -260,6 +260,8 @@ Version 3.2.1 versus 3.2.0
       variables: Expecting ".nv.global", provided ".nv.global.init". 
     - Fixing GPUWattch McPAT Makefile to use -m32 for 32 bit and -m64
       for 64 bit Linux. 
+    - Fixing GPUWattch McPAT Makefile to use -m32 for 32 bit and -m64
+      for 64 bit Linux. 
     - Fix for [Bug 43] Incorrect power results - new gpuwattch_gtx480.xml file
     - Fix incorrect initialization of wire_length variable in cacti/wire.cc. 
       Caused incorrect per-access cache energy.
