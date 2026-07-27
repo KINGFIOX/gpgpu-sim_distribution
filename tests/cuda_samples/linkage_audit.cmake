@@ -9,9 +9,9 @@ foreach(executable IN LISTS executable_list)
     OUTPUT_VARIABLE dynamic_section
     COMMAND_ERROR_IS_FATAL ANY)
   if(NOT dynamic_section MATCHES
-     "NEEDED.*Shared library: \\[libcudart\\.so\\.11\\.0\\]")
+     "NEEDED.*Shared library: \\[libcudart\\.so\\]")
     message(FATAL_ERROR
-      "${executable} is not dynamically linked to libcudart.so.11.0")
+      "${executable} is not dynamically linked to libcudart.so")
   endif()
   if(dynamic_section MATCHES
      "Shared library: \\[lib(cuda\\.so|cublas|cufft|curand|cusolver|cusparse|npp|nvrtc)")

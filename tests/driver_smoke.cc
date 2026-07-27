@@ -23,7 +23,7 @@ Function load(void *library, const char *name) {
 
 int main(int argc, char **argv) {
   if (argc != 2) return EXIT_FAILURE;
-  const std::string library_path = std::string(argv[1]) + "/libcuda.so.1";
+  const std::string library_path = std::string(argv[1]) + "/libcuda.so";
   void *library = dlopen(library_path.c_str(), RTLD_NOW | RTLD_LOCAL);
   if (library == nullptr) {
     std::fprintf(stderr, "dlopen failed: %s\n", dlerror());

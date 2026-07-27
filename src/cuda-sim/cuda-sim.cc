@@ -1823,14 +1823,10 @@ size_t get_kernel_code_size(class function_info *entry) {
   return entry->get_function_size();
 }
 
-#include "../../version"
-#include "detailed_version"
-
 void print_splash() {
   static int splash_printed = 0;
   if (!splash_printed) {
-    fprintf(stdout, "\n\n        *** %s [build %s] ***\n\n\n",
-            g_gpgpusim_version_string, g_gpgpusim_build_string);
+    fprintf(stdout, "\n\n        *** GPGPU-Sim Simulator ***\n\n\n");
     splash_printed = 1;
   }
 }

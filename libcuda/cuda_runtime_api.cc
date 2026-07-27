@@ -158,7 +158,7 @@ struct _cuda_device_id *gpgpu_context::GPGPUSim_Init() {
     gpgpu_sim *the_gpu = gpgpu_ptx_sim_init_perf();
 
     cudaDeviceProp *prop = (cudaDeviceProp *)calloc(sizeof(cudaDeviceProp), 1);
-    snprintf(prop->name, 256, "GPGPU-Sim_v%s", g_gpgpusim_version_string);
+    snprintf(prop->name, 256, "GPGPU-Sim");
     prop->major = the_gpu->compute_capability_major();
     prop->minor = the_gpu->compute_capability_minor();
     prop->totalGlobalMem = 0x80000000 /* 2 GB */;
@@ -270,42 +270,6 @@ std::string get_app_binary() {
   return self_exe_path;
 }
 
-static int get_app_cuda_version_internal(std::string app_binary) {
-  int app_cuda_version = 0;
-  char fname[1024];
-  snprintf(fname, 1024, "_app_cuda_version_XXXXXX");
-  int fd = mkstemp(fname);
-  close(fd);
-  std::string app_cuda_version_command =
-      "ldd " + app_binary +
-      " | grep libcudart.so | sed  's/.*libcudart.so.\\(.*\\) =>.*/\\1/' > " +
-      fname;
-  int res = system(app_cuda_version_command.c_str());
-  if (res == -1) {
-    printf("Error - Cannot detect the app's CUDA version. Command: %s\n",
-           app_cuda_version_command.c_str());
-    exit(1);
-  }
-  FILE *cmd = fopen(fname, "r");
-  char buf[256];
-  while (fgets(buf, sizeof(buf), cmd) != 0) {
-    std::cout << buf;
-    app_cuda_version = atoi(buf);
-  }
-  fclose(cmd);
-  if (app_cuda_version == 0) {
-    printf("Error - Cannot detect the app's CUDA version. Command: %s\n",
-           app_cuda_version_command.c_str());
-    exit(1);
-  }
-  return app_cuda_version;
-}
-
-static int get_app_cuda_version() {
-  std::string app_binary = get_app_binary();
-  return get_app_cuda_version_internal(app_binary);
-}
-
 //! Keep track of the association between filename and fatbin handle.
 void cuda_runtime_api::cuobjdumpRegisterFatBinary(unsigned int handle,
                                                   const char *filename,
@@ -391,8 +355,7 @@ __host__ cudaError_t CUDARTAPI cudaDeviceGetLimitInternal(
 
 // Internal implementation for cudaRegisterFatBiaryInternal
 void **cudaRegisterFatBiaryInternal_impl(
-    void *fatCubin, gpgpu_context *gpgpu_ctx, std::string &app_binary_path,
-    int app_cuda_version,
+    void *fatCubin, gpgpu_context *gpgpu_ctx,
     std::function<void(gpgpu_context *)> ctx_cuobjdumpInit_func) {
   gpgpu_context *ctx;
   if (gpgpu_ctx) {
@@ -405,8 +368,6 @@ void **cudaRegisterFatBiaryInternal_impl(
   }
   CUctx_st *context = GPGPUSim_Context(ctx);
   static unsigned next_fat_bin_handle = 1;
-  assert(app_cuda_version == 11 &&
-         "The application must be compiled with CUDA 11.x.");
   const char *filename = "default";
 
   // Associate each registered fat binary with the sections extracted from the
@@ -424,13 +385,11 @@ void **cudaRegisterFatBiaryInternal_impl(
 
 void **cudaRegisterFatBinaryInternal(void *fatCubin,
                                      gpgpu_context *gpgpu_ctx = NULL) {
-  std::string app_binary_path = get_app_binary();
-  int app_cuda_version = get_app_cuda_version();
   auto ctx_cuobjdumpInit = [](gpgpu_context *ctx) {
     ctx->api->cuobjdumpInit();
   };
-  return cudaRegisterFatBiaryInternal_impl(fatCubin, gpgpu_ctx, app_binary_path,
-                                           app_cuda_version, ctx_cuobjdumpInit);
+  return cudaRegisterFatBiaryInternal_impl(fatCubin, gpgpu_ctx,
+                                           ctx_cuobjdumpInit);
 }
 
 void cudaRegisterFunctionInternal(void **fatCubinHandle, const char *hostFun,

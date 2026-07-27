@@ -1,7 +1,8 @@
 cmake_minimum_required(VERSION 3.18)
 
+set(CMAKE_SKIP_INSTALL_RULES TRUE)
+
 project(GPGPU-Sim
-        VERSION 4.2.0
         DESCRIPTION "cycle-level simulator modeling contemporary graphics processing units (GPUs)"
         HOMEPAGE_URL https://github.com/accel-sim/gpgpu-sim_distribution
         LANGUAGES CXX)
@@ -16,13 +17,6 @@ option(GPGPUSIM_ENABLE_CUDA_SAMPLES
 
 include(gpgpusim_check.cmake)
 include(CTest)
-
-add_custom_target(gen_build_string ALL
-  COMMAND ${CMAKE_COMMAND}
-          -D INPUT_DIR=${CMAKE_CURRENT_SOURCE_DIR}
-          -D OUTPUT_DIR=${CMAKE_BINARY_DIR}
-          -P ${CMAKE_CURRENT_SOURCE_DIR}/gpgpusim_gen_build_string.cmake
-  COMMENT "Generating build string file in ${CMAKE_BINARY_DIR}")
 
 if(CMAKE_BUILD_TYPE STREQUAL "Debug")
   add_compile_definitions(DEBUG=1)
@@ -44,13 +38,6 @@ add_subdirectory(libcuda)
 add_library(cudart SHARED $<TARGET_OBJECTS:gpgpusim_entrypoint>)
 add_library(entrypoint STATIC $<TARGET_OBJECTS:gpgpusim_entrypoint>)
 
-set_target_properties(cudart PROPERTIES
-  OUTPUT_NAME cudart
-  VERSION 11.8.0
-  SOVERSION 11.0)
-
-target_link_options(cudart PRIVATE
-  "-Wl,--version-script=${CMAKE_CURRENT_SOURCE_DIR}/linux-so-version.txt")
 target_link_libraries(cudart PRIVATE
   -Wl,--whole-archive cuda -Wl,--no-whole-archive
   ptxsim gpgpusim intersim m z pthread)
@@ -59,13 +46,8 @@ target_link_libraries(entrypoint PUBLIC cuda ptxsim gpgpusim intersim)
 # The Driver API subset shares the same process-wide simulator state as cudart.
 add_custom_command(TARGET cudart POST_BUILD
   COMMAND ${CMAKE_COMMAND} -E create_symlink
-          "$<TARGET_SONAME_FILE_NAME:cudart>"
-          "$<TARGET_FILE_DIR:cudart>/libcuda.so.1"
-  COMMAND ${CMAKE_COMMAND} -E create_symlink
-          "libcuda.so.1"
+          "$<TARGET_FILE_NAME:cudart>"
           "$<TARGET_FILE_DIR:cudart>/libcuda.so")
-
-include(CMakePackageConfigHelpers)
 
 # Export the simulator runtime from the build tree.  The library is
 # intentionally not installed: consumers must opt into the simulator by
@@ -77,10 +59,6 @@ configure_file(
   "${PROJECT_SOURCE_DIR}/cmake/GPGPUSimConfig.cmake.in"
   "${CMAKE_BINARY_DIR}/GPGPUSimConfig.cmake"
   @ONLY)
-write_basic_package_version_file(
-  "${CMAKE_BINARY_DIR}/GPGPUSimConfigVersion.cmake"
-  VERSION "${PROJECT_VERSION}"
-  COMPATIBILITY SameMajorVersion)
 message(STATUS
   "GPGPU-Sim build-tree package: ${CMAKE_BINARY_DIR}/GPGPUSimConfig.cmake")
 
