@@ -273,7 +273,10 @@ ptx_reg_t ptx_thread_info::get_operand_value(const operand_info &op,
       if (op.is_reg()) {
         result = get_reg(op.get_symbol());
       } else if (op.is_builtin()) {
-        result.u32 = get_builtin(op.get_int(), op.get_addr_offset());
+        if ((op.get_int() & 0xFFFF) == CLOCK64_REG)
+          result.u64 = get_builtin(op.get_int(), op.get_addr_offset());
+        else
+          result.u32 = get_builtin(op.get_int(), op.get_addr_offset());
       } else if (op.is_immediate_address()) {
         result.u64 = op.get_addr_offset();
       } else if (op.is_memory_operand()) {

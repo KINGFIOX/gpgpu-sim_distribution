@@ -68,7 +68,10 @@ void *gpgpu_sim_thread_sequential(void *ctx_ptr) {
   return NULL;
 }
 
+static gpgpu_context *termination_context = NULL;
+
 static void termination_callback() {
+  if (termination_context != NULL) termination_context->exit_simulation();
   printf("GPGPU-Sim: *** exit detected ***\n");
   fflush(stdout);
 }
@@ -188,10 +191,20 @@ void gpgpu_context::synchronize() {
 }
 
 void gpgpu_context::exit_simulation() {
+  if (!the_gpgpusim->g_sim_thread_started ||
+      the_gpgpusim->g_sim_thread_joined) {
+    return;
+  }
+
+  const bool was_running = !the_gpgpusim->g_sim_done;
   the_gpgpusim->g_sim_done = true;
   printf("GPGPU-Sim: exit_simulation called\n");
   fflush(stdout);
-  sem_wait(&(the_gpgpusim->g_sim_signal_exit));
+  if (was_running) sem_wait(&(the_gpgpusim->g_sim_signal_exit));
+  if (!pthread_equal(pthread_self(), the_gpgpusim->g_simulation_thread)) {
+    pthread_join(the_gpgpusim->g_simulation_thread, NULL);
+    the_gpgpusim->g_sim_thread_joined = true;
+  }
   printf("GPGPU-Sim: simulation thread signaled exit\n");
   fflush(stdout);
 }
@@ -237,13 +250,22 @@ gpgpu_sim *gpgpu_context::gpgpu_ptx_sim_init_perf() {
 void gpgpu_context::start_sim_thread(int api) {
   if (the_gpgpusim->g_sim_done) {
     the_gpgpusim->g_sim_done = false;
+    the_gpgpusim->g_sim_thread_joined = false;
+    termination_context = this;
+    int result;
     if (api == 1) {
-      pthread_create(&(the_gpgpusim->g_simulation_thread), NULL,
-                     gpgpu_sim_thread_concurrent, (void *)this);
+      result = pthread_create(&(the_gpgpusim->g_simulation_thread), NULL,
+                              gpgpu_sim_thread_concurrent, (void *)this);
     } else {
-      pthread_create(&(the_gpgpusim->g_simulation_thread), NULL,
-                     gpgpu_sim_thread_sequential, (void *)this);
+      result = pthread_create(&(the_gpgpusim->g_simulation_thread), NULL,
+                              gpgpu_sim_thread_sequential, (void *)this);
     }
+    if (result != 0) {
+      fprintf(stderr, "GPGPU-Sim: failed to create simulation thread (%d)\n",
+              result);
+      abort();
+    }
+    the_gpgpusim->g_sim_thread_started = true;
   }
 }
 

@@ -190,6 +190,7 @@ struct _cuda_device_id *gpgpu_context::GPGPUSim_Init() {
     prop->clockRate = the_gpu->shader_clock();
     prop->multiProcessorCount = the_gpu->get_config().num_shader();
     prop->maxThreadsPerMultiProcessor = the_gpu->threads_per_core();
+    prop->computeMode = cudaComputeModeDefault;
     the_gpu->set_prop(prop);
     the_gpgpusim->the_cude_device = new _cuda_device_id(the_gpu);
     the_device = the_gpgpusim->the_cude_device;
@@ -1278,6 +1279,10 @@ cudaDeviceGetAttributeInternal(int *value, enum cudaDeviceAttr attr, int device,
     announce_call(__my_func__);
   }
 
+  if (value == nullptr) {
+    return g_last_cudaError = cudaErrorInvalidValue;
+  }
+
   const struct cudaDeviceProp *prop;
   _cuda_device_id *dev = ctx->GPGPUSim_Init();
 
@@ -1340,6 +1345,9 @@ cudaDeviceGetAttributeInternal(int *value, enum cudaDeviceAttr attr, int device,
         break;
       case cudaDevAttrMaxRegistersPerMultiprocessor:
         *value = prop->regsPerMultiprocessor;
+        break;
+      case cudaDevAttrComputeMode:
+        *value = prop->computeMode;
         break;
       default:
         return g_last_cudaError = cudaErrorInvalidValue;
@@ -1726,6 +1734,24 @@ __host__ cudaError_t CUDARTAPI cudaSetDevice(int device) {
 
 __host__ cudaError_t CUDARTAPI cudaGetDevice(int *device) {
   return cudaGetDeviceInternal(device);
+}
+
+__host__ cudaError_t CUDARTAPI cudaDeviceCanAccessPeer(int *canAccessPeer,
+                                                       int device,
+                                                       int peerDevice) {
+  if (canAccessPeer == nullptr) {
+    return g_last_cudaError = cudaErrorInvalidValue;
+  }
+
+  _cuda_device_id *dev = GPGPU_Context()->GPGPUSim_Init();
+  if (device < 0 || device >= dev->num_devices() || peerDevice < 0 ||
+      peerDevice >= dev->num_devices()) {
+    return g_last_cudaError = cudaErrorInvalidDevice;
+  }
+
+  // The simulator currently exposes one device, so no peer mapping exists.
+  *canAccessPeer = 0;
+  return g_last_cudaError = cudaSuccess;
 }
 
 __host__ cudaError_t CUDARTAPI cudaDeviceGetLimit(size_t *pValue,
