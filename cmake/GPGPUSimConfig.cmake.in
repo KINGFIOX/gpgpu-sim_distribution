@@ -1,0 +1,3 @@
+set(GPGPUSim_VERSION "@PROJECT_VERSION@")
+include("${CMAKE_CURRENT_LIST_DIR}/GPGPUSimTargets.cmake")
+set(GPGPUSim_FOUND TRUE)

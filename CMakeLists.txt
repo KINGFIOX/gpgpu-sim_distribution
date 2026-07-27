@@ -6,18 +6,13 @@ project(GPGPU-Sim
         HOMEPAGE_URL https://github.com/accel-sim/gpgpu-sim_distribution
         LANGUAGES CXX)
 
-if(CMAKE_INSTALL_PREFIX_INITIALIZED_TO_DEFAULT)
-  set(CMAKE_INSTALL_PREFIX "${PROJECT_SOURCE_DIR}" CACHE PATH
-      "GPGPU-Sim installation root" FORCE)
-endif()
-
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 
 option(GPGPUSIM_ENABLE_TRACE "Enable GPGPU-Sim debug tracing" ON)
 option(GPGPUSIM_ENABLE_CUDA_SAMPLES
-       "Build the pinned CUDA Samples 11.8 regression tests" OFF)
+       "Build the pinned CUDA Samples 11.8 regression tests" ON)
 
 include(gpgpusim_check.cmake)
 include(CTest)
@@ -70,20 +65,24 @@ add_custom_command(TARGET cudart POST_BUILD
           "libcuda.so.1"
           "$<TARGET_FILE_DIR:cudart>/libcuda.so")
 
-set(GPGPUSIM_CONFIG
-    "gcc-${CMAKE_CXX_COMPILER_VERSION}/cuda-11080/${GPGPUSIM_BUILD_MODE}")
-set(GPGPUSIM_INSTALL_DIR "lib/${GPGPUSIM_CONFIG}")
-set(GPGPUSIM_INSTALL_PATH "${CMAKE_INSTALL_PREFIX}/${GPGPUSIM_INSTALL_DIR}")
+include(CMakePackageConfigHelpers)
 
-include(gpgpusim_gen_setup_environment.cmake)
-
-install(TARGETS cudart LIBRARY DESTINATION ${GPGPUSIM_INSTALL_DIR})
-install(CODE "
-  set(alias_dir \"\$ENV{DESTDIR}\${CMAKE_INSTALL_PREFIX}/${GPGPUSIM_INSTALL_DIR}\")
-  execute_process(COMMAND \"${CMAKE_COMMAND}\" -E create_symlink
-    \"libcudart.so.11.0\" \"\${alias_dir}/libcuda.so.1\")
-  execute_process(COMMAND \"${CMAKE_COMMAND}\" -E create_symlink
-    \"libcuda.so.1\" \"\${alias_dir}/libcuda.so\")")
+# Export the simulator runtime from the build tree.  The library is
+# intentionally not installed: consumers must opt into the simulator by
+# pointing find_package at this build directory.
+export(TARGETS cudart
+  FILE "${CMAKE_BINARY_DIR}/GPGPUSimTargets.cmake"
+  NAMESPACE GPGPUSim::)
+configure_file(
+  "${PROJECT_SOURCE_DIR}/cmake/GPGPUSimConfig.cmake.in"
+  "${CMAKE_BINARY_DIR}/GPGPUSimConfig.cmake"
+  @ONLY)
+write_basic_package_version_file(
+  "${CMAKE_BINARY_DIR}/GPGPUSimConfigVersion.cmake"
+  VERSION "${PROJECT_VERSION}"
+  COMPATIBILITY SameMajorVersion)
+message(STATUS
+  "GPGPU-Sim build-tree package: ${CMAKE_BINARY_DIR}/GPGPUSimConfig.cmake")
 
 if(BUILD_TESTING)
   add_subdirectory(tests)

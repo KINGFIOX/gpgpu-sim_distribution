@@ -3,7 +3,7 @@ set -euo pipefail
 
 repo_dir=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)
 build_dir=${GPGPUSIM_BUILD_DIR:-"${repo_dir}/build"}
-cuda_samples=${GPGPUSIM_ENABLE_CUDA_SAMPLES:-OFF}
+cuda_samples=${GPGPUSIM_ENABLE_CUDA_SAMPLES:-ON}
 
 cmake -S "${repo_dir}" -B "${build_dir}" \
   -DCMAKE_BUILD_TYPE=Debug \

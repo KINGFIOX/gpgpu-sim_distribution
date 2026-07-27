@@ -1,7 +1,7 @@
 # GPGPU-Sim CUDA 11.8 Runtime
 
-This tree provides a focused GPGPU-Sim runtime for standalone CUDA C
-applications. It intentionally targets one host/toolkit combination instead of
+This tree provides a focused GPGPU-Sim runtime and CMake/CTest regression
+suite. It intentionally targets one host/toolkit combination instead of
 maintaining compatibility layers for multiple CUDA releases and integrations.
 
 ## Supported Environment
@@ -10,7 +10,7 @@ maintaining compatibility layers for multiple CUDA releases and integrations.
 - CUDA Toolkit 11.8 (`nvcc` 11.8 and its CUDA headers/tools)
 - GCC/G++
 - CMake 3.18 or newer
-- Standalone CUDA C applications using the supported Runtime API
+- CUDA C test targets linked to the simulator runtime
 
 CMake rejects non-Linux hosts, non-GCC host compilers, and CUDA Toolkit
 versions other than 11.8.
@@ -24,26 +24,33 @@ cmake -S . -B build \
   -DCUDAToolkit_ROOT=/usr/local/cuda-11.8
 cmake --build build --parallel
 ctest --test-dir build --output-on-failure
-cmake --install build
-source build/setup
 ```
 
-The install step writes the simulator libraries under:
+The simulator `libcudart` is a build-tree test dependency. It is not installed,
+and this project does not guarantee running an arbitrary CUDA executable by
+exporting `LD_LIBRARY_PATH`. Tests link the build-tree target directly and use
+CTest to provide their simulator configuration.
 
-```text
-lib/gcc-<version>/cuda-11080/<build-mode>/
+The build also writes a build-tree CMake package. An external CMake project can
+opt in explicitly with:
+
+```cmake
+find_package(GPGPUSim CONFIG REQUIRED)
+set_target_properties(my_cuda_test PROPERTIES CUDA_RUNTIME_LIBRARY None)
+target_link_libraries(my_cuda_test PRIVATE GPGPUSim::cudart)
 ```
 
-The generated `build/setup` script adds that directory to
-`LD_LIBRARY_PATH`, adds CUDA 11.8 to `PATH`, and exports the simulator paths.
+Configure that project with `-DGPGPUSim_DIR=/path/to/gpgpu-sim/build` (or add
+the same directory to `CMAKE_PREFIX_PATH`). The package refers to the existing
+build-tree library; there is deliberately no install package for `libcudart`.
 
 `short-tests-cmake.sh` runs the configure, build, and test sequence in one
 command. Set `GPGPUSIM_BUILD_DIR` to select a different build directory.
 
 ## CUDA Samples Tests
 
-The CUDA Samples 11.8 dataset is pinned as a Git submodule. The regular build
-does not compile it. Enable the focused regression suite explicitly:
+The CUDA Samples 11.8 dataset is pinned as a Git submodule. The six focused
+sample targets are enabled by default:
 
 ```bash
 cmake -S . -B build \
@@ -54,34 +61,41 @@ cmake --build build --parallel
 ctest --test-dir build -L cuda-samples-gate --output-on-failure
 ```
 
-The six detailed-simulation gates are `deviceQuery`, `vectorAdd`,
+The six sample targets are `deviceQuery`, `vectorAdd`,
 `simpleTemplates`, `simpleVoteIntrinsics`, `simpleAtomicIntrinsics`, and
-`clock`. All device-code test binaries use `70-virtual`, so their CUDA fatbins
-contain host ELF plus PTX and no device ELF/cubin; the host-only `deviceQuery`
-sample has no device fatbin by design. Separate linkage and fatbin audits verify
-the shared CUDA 11.8 Runtime library and PTX-only output. The upstream sample
-sources are not modified.
-
-For broader compatibility data, run the report-only functional survey:
+`clock`. Each target is built once and registered as functional and performance
+CTest tests. Tests use the `<sample>.functional` and `<sample>.performance`
+names and can be selected by mode label:
 
 ```bash
-cmake --build build --target cuda-samples-survey
+ctest --test-dir build -L cuda-samples-functional --output-on-failure
+ctest --test-dir build -L cuda-samples-performance --output-on-failure
 ```
 
-It classifies every sample, builds standalone CUDA Runtime candidates in an
-isolated copy, and writes `manifest.tsv`, `results.tsv`, per-sample logs, and
-`summary.md` under `build/tests/cuda_samples/survey`. Unsupported categories
-such as Driver/JIT, graphics, multi-GPU, and CUDA library samples are recorded
-as exclusions. Build or runtime failures are recorded in the report and do not
-make the target fail. Set `CUDA_SAMPLES_SURVEY_FILTER` to an extended regular
-expression when surveying a subset.
+The `gpgpusim_add_cuda_sample()` helper accepts `FUNCTIONAL`, `PERFORMANCE`,
+`SOURCES`, `ARGS`, and `TIMEOUT`; for example:
 
-To include the focused gates in `short-tests-cmake.sh`, set
-`GPGPUSIM_ENABLE_CUDA_SAMPLES=ON`.
+```cmake
+gpgpusim_add_cuda_sample(vectorAdd
+  Samples/0_Introduction/vectorAdd
+  FUNCTIONAL PERFORMANCE
+  SOURCES vectorAdd.cu
+  TIMEOUT 60)
+```
+
+Selecting both modes registers both CTest tests while keeping one executable
+target. Selecting neither mode defaults to functional simulation. `TIMEOUT`
+applies independently to every registered mode.
+
+All device-code test binaries use `70-virtual`, so their CUDA fatbins contain
+host ELF plus PTX and no device ELF/cubin. Separate linkage and fatbin audits
+verify the simulator `libcudart` dependency and PTX-only output. The upstream
+sample sources are not modified.
 
 ## Libraries
 
-The build produces one implementation library with CUDA 11.8 ABI names:
+The build produces one implementation library with CUDA 11.8 ABI names for
+the in-tree tests and explicit CMake consumers:
 
 - `libcudart.so.11.0`
 - `libcuda.so.1` -> `libcudart.so.11.0`
@@ -89,8 +103,8 @@ The build produces one implementation library with CUDA 11.8 ABI names:
 
 The Runtime API covers device discovery, allocation, copies, kernel launch,
 streams, events, synchronization, and the CUDA registration hooks required by
-`nvcc`-generated host code. The test suite runs a CUDA C vector-add program
-against this library.
+`nvcc`-generated host code. The test suite runs CUDA Samples and a vector-add
+smoke program against this library.
 
 The Driver API is deliberately limited to the following delegated subset:
 
