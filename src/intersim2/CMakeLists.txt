@@ -17,7 +17,6 @@ list(APPEND intersim_INC ${CMAKE_CURRENT_SOURCE_DIR}
     ${CMAKE_CURRENT_SOURCE_DIR}/allocators
     ${CMAKE_CURRENT_SOURCE_DIR}/arbiters
     ${CMAKE_CURRENT_SOURCE_DIR}/networks
-    ${CMAKE_CURRENT_SOURCE_DIR}/power
     ${CMAKE_CURRENT_SOURCE_DIR}/routers
     ${PROJECT_SOURCE_DIR}/src)
 
@@ -67,9 +66,6 @@ list(APPEND intersim_SRC
         networks/tree4.cpp
         outputset.cpp
         packet_reply_info.cpp
-        power/buffer_monitor.cpp
-        power/power_module.cpp
-        power/switch_monitor.cpp
         rng_double_wrapper.cpp
         rng_wrapper.cpp
         routefunc.cpp
@@ -84,8 +80,11 @@ list(APPEND intersim_SRC
 
 # If standalone, also build for it
 if(GPGPUSIM_INTERSIM_STANDALONE)
-    list(REMOVE_ITEM ${intersim_SRC} interconnect_interface.cpp)
-    add_executable(booksim ${intersim_SRC})
+    set(booksim_SRC ${intersim_SRC})
+    list(REMOVE_ITEM booksim_SRC
+        gputrafficmanager.cpp
+        interconnect_interface.cpp)
+    add_executable(booksim ${booksim_SRC})
     target_include_directories(booksim PUBLIC 
         ${intersim_INC})
     target_include_directories(booksim PRIVATE ${CMAKE_CURRENT_BINARY_DIR})

@@ -446,143 +446,6 @@ std::string cuda_sim::ptx_get_insn_str(address_type pc) {
   return finfo->get_insn_str(pc);
 }
 
-void ptx_instruction::set_fp_or_int_archop() {
-  oprnd_type = UN_OP;
-  if ((m_opcode == MEMBAR_OP) || (m_opcode == SSY_OP) || (m_opcode == BRA_OP) ||
-      (m_opcode == BAR_OP) || (m_opcode == RET_OP) || (m_opcode == NOP_OP) ||
-      (m_opcode == EXIT_OP) || (m_opcode == CALL_OP)) {
-    // do nothing
-  } else if ((m_opcode == CVT_OP || m_opcode == SET_OP ||
-              m_opcode == SLCT_OP)) {
-    if (get_type2() == F16_TYPE || get_type2() == F32_TYPE ||
-        get_type2() == F64_TYPE || get_type2() == FF64_TYPE) {
-      oprnd_type = FP_OP;
-    } else
-      oprnd_type = INT_OP;
-
-  } else {
-    if (get_type() == F16_TYPE || get_type() == F32_TYPE ||
-        get_type() == F64_TYPE || get_type() == FF64_TYPE) {
-      oprnd_type = FP_OP;
-    } else
-      oprnd_type = INT_OP;
-  }
-}
-
-void ptx_instruction::set_mul_div_or_other_archop() {
-  sp_op = OTHER_OP;
-  if ((m_opcode != MEMBAR_OP) && (m_opcode != SSY_OP) && (m_opcode != BRA_OP) &&
-      (m_opcode != BAR_OP) && (m_opcode != EXIT_OP) && (m_opcode != NOP_OP) &&
-      (m_opcode != RET_OP) && (m_opcode != CALL_OP)) {
-    if (get_type() == F64_TYPE || get_type() == FF64_TYPE) {
-      switch (get_opcode()) {
-        case MUL_OP:
-        case MAD_OP:
-        case FMA_OP:
-          sp_op = DP_MUL_OP;
-          break;
-        case DIV_OP:
-        case REM_OP:
-          sp_op = DP_DIV_OP;
-          break;
-        case RCP_OP:
-          sp_op = DP_DIV_OP;
-          break;
-        case LG2_OP:
-          sp_op = FP_LG_OP;
-          break;
-        case RSQRT_OP:
-        case SQRT_OP:
-          sp_op = FP_SQRT_OP;
-          break;
-        case SIN_OP:
-        case COS_OP:
-          sp_op = FP_SIN_OP;
-          break;
-        case EX2_OP:
-          sp_op = FP_EXP_OP;
-          break;
-        case MMA_OP:
-          sp_op = TENSOR__OP;
-          break;
-        case TEX_OP:
-          sp_op = TEX__OP;
-          break;
-        default:
-          if ((op == DP_OP) || (op == ALU_OP)) sp_op = DP___OP;
-          break;
-      }
-    } else if (get_type() == F16_TYPE || get_type() == F32_TYPE) {
-      switch (get_opcode()) {
-        case MUL_OP:
-        case MAD_OP:
-        case FMA_OP:
-          sp_op = FP_MUL_OP;
-          break;
-        case DIV_OP:
-        case REM_OP:
-          sp_op = FP_DIV_OP;
-          break;
-        case RCP_OP:
-          sp_op = FP_DIV_OP;
-          break;
-        case LG2_OP:
-          sp_op = FP_LG_OP;
-          break;
-        case RSQRT_OP:
-        case SQRT_OP:
-          sp_op = FP_SQRT_OP;
-          break;
-        case SIN_OP:
-        case COS_OP:
-          sp_op = FP_SIN_OP;
-          break;
-        case EX2_OP:
-          sp_op = FP_EXP_OP;
-          break;
-        case MMA_OP:
-          sp_op = TENSOR__OP;
-          break;
-        case TEX_OP:
-          sp_op = TEX__OP;
-          break;
-        default:
-          if ((op == SP_OP) || (op == ALU_OP)) sp_op = FP__OP;
-          break;
-      }
-    } else {
-      switch (get_opcode()) {
-        case MUL24_OP:
-        case MAD24_OP:
-          sp_op = INT_MUL24_OP;
-          break;
-        case MUL_OP:
-        case MAD_OP:
-        case FMA_OP:
-          if (get_type() == U32_TYPE || get_type() == S32_TYPE ||
-              get_type() == B32_TYPE)
-            sp_op = INT_MUL32_OP;
-          else
-            sp_op = INT_MUL_OP;
-          break;
-        case DIV_OP:
-        case REM_OP:
-          sp_op = INT_DIV_OP;
-          break;
-        case MMA_OP:
-          sp_op = TENSOR__OP;
-          break;
-        case TEX_OP:
-          sp_op = TEX__OP;
-          break;
-        default:
-          if ((op == INTP_OP) || (op == ALU_OP)) sp_op = INT__OP;
-          break;
-      }
-    }
-  }
-}
-
 void ptx_instruction::set_bar_type() {
   if (m_opcode == BAR_OP) {
     switch (m_barrier_op) {
@@ -668,7 +531,6 @@ void ptx_instruction::set_opcode_and_latency() {
     }
   }
   op = ALU_OP;
-  mem_op = NOT_TEX;
   initiation_interval = latency = 1;
   switch (m_opcode) {
     case MOV_OP:
@@ -699,7 +561,6 @@ void ptx_instruction::set_opcode_and_latency() {
       break;
     case TEX_OP:
       op = LOAD_OP;
-      mem_op = TEX;
       break;
     case ATOM_OP:
       op = LOAD_OP;
@@ -880,8 +741,6 @@ void ptx_instruction::set_opcode_and_latency() {
     default:
       break;
   }
-  set_fp_or_int_archop();
-  set_mul_div_or_other_archop();
 }
 
 void ptx_thread_info::ptx_fetch_inst(inst_t &inst) const {

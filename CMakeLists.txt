@@ -16,7 +16,6 @@ set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 
 option(GPGPUSIM_ENABLE_TRACE "Enable GPGPU-Sim debug tracing" ON)
-set(GPGPUSIM_USE_POWER_MODEL OFF)
 
 include(gpgpusim_check.cmake)
 include(CTest)
@@ -59,11 +58,6 @@ target_link_libraries(cudart PRIVATE
   -Wl,--whole-archive cuda -Wl,--no-whole-archive
   ptxsim gpgpusim intersim m z pthread)
 target_link_libraries(entrypoint PUBLIC cuda ptxsim gpgpusim intersim)
-
-if(GPGPUSIM_USE_POWER_MODEL)
-  target_link_libraries(cudart PRIVATE accelwattch)
-  target_link_libraries(entrypoint PUBLIC accelwattch)
-endif()
 
 # The Driver API subset shares the same process-wide simulator state as cudart.
 add_custom_command(TARGET cudart POST_BUILD

@@ -65,23 +65,15 @@
 #include "../statwrapper.h"
 #include "../trace.h"
 #include "mem_latency_stat.h"
-#include "power_stat.h"
 #include "stats.h"
 #include "visualizer.h"
 
-#ifdef GPGPUSIM_POWER_MODEL
-#include "power_interface.h"
-#else
-class gpgpu_sim_wrapper {};
-#endif
-
 #include <stdio.h>
 #include <string.h>
+#include <algorithm>
 #include <iostream>
 #include <sstream>
 #include <string>
-
-// #define MAX(a, b) (((a) > (b)) ? (a) : (b)) //redefined
 
 bool g_interactive_debugger_enabled = false;
 
@@ -97,140 +89,6 @@ tr1_hash_map<new_addr_type, unsigned> address_random_interleaving;
 #define MEM_LATENCY_STAT_IMPL
 
 #include "mem_latency_stat.h"
-
-void power_config::reg_options(class OptionParser *opp) {
-  option_parser_register(opp, "-accelwattch_xml_file", OPT_CSTR,
-                         &g_power_config_name, "AccelWattch XML file",
-                         "accelwattch_sass_sim.xml");
-
-  option_parser_register(opp, "-power_simulation_enabled", OPT_BOOL,
-                         &g_power_simulation_enabled,
-                         "Turn on power simulator (1=On, 0=Off)", "0");
-
-  option_parser_register(opp, "-power_per_cycle_dump", OPT_BOOL,
-                         &g_power_per_cycle_dump,
-                         "Dump detailed power output each cycle", "0");
-
-  option_parser_register(opp, "-hw_perf_file_name", OPT_CSTR,
-                         &g_hw_perf_file_name,
-                         "Hardware Performance Statistics file", "hw_perf.csv");
-
-  option_parser_register(
-      opp, "-hw_perf_bench_name", OPT_CSTR, &g_hw_perf_bench_name,
-      "Kernel Name in Hardware Performance Statistics file", "");
-
-  option_parser_register(opp, "-power_simulation_mode", OPT_INT32,
-                         &g_power_simulation_mode,
-                         "Switch performance counter input for power "
-                         "simulation (0=Sim, 1=HW, 2=HW-Sim Hybrid)",
-                         "0");
-
-  option_parser_register(opp, "-dvfs_enabled", OPT_BOOL, &g_dvfs_enabled,
-                         "Turn on DVFS for power model", "0");
-  option_parser_register(opp, "-aggregate_power_stats", OPT_BOOL,
-                         &g_aggregate_power_stats,
-                         "Accumulate power across all kernels", "0");
-
-  // Accelwattch Hyrbid Configuration
-
-  option_parser_register(
-      opp, "-accelwattch_hybrid_perfsim_L1_RH", OPT_BOOL,
-      &accelwattch_hybrid_configuration[HW_L1_RH],
-      "Get L1 Read Hits for Accelwattch-Hybrid from Accel-Sim", "0");
-  option_parser_register(
-      opp, "-accelwattch_hybrid_perfsim_L1_RM", OPT_BOOL,
-      &accelwattch_hybrid_configuration[HW_L1_RM],
-      "Get L1 Read Misses for Accelwattch-Hybrid from Accel-Sim", "0");
-  option_parser_register(
-      opp, "-accelwattch_hybrid_perfsim_L1_WH", OPT_BOOL,
-      &accelwattch_hybrid_configuration[HW_L1_WH],
-      "Get L1 Write Hits for Accelwattch-Hybrid from Accel-Sim", "0");
-  option_parser_register(
-      opp, "-accelwattch_hybrid_perfsim_L1_WM", OPT_BOOL,
-      &accelwattch_hybrid_configuration[HW_L1_WM],
-      "Get L1 Write Misses for Accelwattch-Hybrid from Accel-Sim", "0");
-
-  option_parser_register(
-      opp, "-accelwattch_hybrid_perfsim_L2_RH", OPT_BOOL,
-      &accelwattch_hybrid_configuration[HW_L2_RH],
-      "Get L2 Read Hits for Accelwattch-Hybrid from Accel-Sim", "0");
-  option_parser_register(
-      opp, "-accelwattch_hybrid_perfsim_L2_RM", OPT_BOOL,
-      &accelwattch_hybrid_configuration[HW_L2_RM],
-      "Get L2 Read Misses for Accelwattch-Hybrid from Accel-Sim", "0");
-  option_parser_register(
-      opp, "-accelwattch_hybrid_perfsim_L2_WH", OPT_BOOL,
-      &accelwattch_hybrid_configuration[HW_L2_WH],
-      "Get L2 Write Hits for Accelwattch-Hybrid from Accel-Sim", "0");
-  option_parser_register(
-      opp, "-accelwattch_hybrid_perfsim_L2_WM", OPT_BOOL,
-      &accelwattch_hybrid_configuration[HW_L2_WM],
-      "Get L2 Write Misses for Accelwattch-Hybrid from Accel-Sim", "0");
-
-  option_parser_register(
-      opp, "-accelwattch_hybrid_perfsim_CC_ACC", OPT_BOOL,
-      &accelwattch_hybrid_configuration[HW_CC_ACC],
-      "Get Constant Cache Acesses for Accelwattch-Hybrid from Accel-Sim", "0");
-
-  option_parser_register(
-      opp, "-accelwattch_hybrid_perfsim_SHARED_ACC", OPT_BOOL,
-      &accelwattch_hybrid_configuration[HW_SHRD_ACC],
-      "Get Shared Memory Acesses for Accelwattch-Hybrid from Accel-Sim", "0");
-
-  option_parser_register(opp, "-accelwattch_hybrid_perfsim_DRAM_RD", OPT_BOOL,
-                         &accelwattch_hybrid_configuration[HW_DRAM_RD],
-                         "Get DRAM Reads for Accelwattch-Hybrid from Accel-Sim",
-                         "0");
-  option_parser_register(
-      opp, "-accelwattch_hybrid_perfsim_DRAM_WR", OPT_BOOL,
-      &accelwattch_hybrid_configuration[HW_DRAM_WR],
-      "Get DRAM Writes for Accelwattch-Hybrid from Accel-Sim", "0");
-
-  option_parser_register(
-      opp, "-accelwattch_hybrid_perfsim_NOC", OPT_BOOL,
-      &accelwattch_hybrid_configuration[HW_NOC],
-      "Get Interconnect Acesses for Accelwattch-Hybrid from Accel-Sim", "0");
-
-  option_parser_register(
-      opp, "-accelwattch_hybrid_perfsim_PIPE_DUTY", OPT_BOOL,
-      &accelwattch_hybrid_configuration[HW_PIPE_DUTY],
-      "Get Pipeline Duty Cycle Acesses for Accelwattch-Hybrid from Accel-Sim",
-      "0");
-
-  option_parser_register(
-      opp, "-accelwattch_hybrid_perfsim_NUM_SM_IDLE", OPT_BOOL,
-      &accelwattch_hybrid_configuration[HW_NUM_SM_IDLE],
-      "Get Number of Idle SMs for Accelwattch-Hybrid from Accel-Sim", "0");
-
-  option_parser_register(
-      opp, "-accelwattch_hybrid_perfsim_CYCLES", OPT_BOOL,
-      &accelwattch_hybrid_configuration[HW_CYCLES],
-      "Get Executed Cycles for Accelwattch-Hybrid from Accel-Sim", "0");
-
-  option_parser_register(
-      opp, "-accelwattch_hybrid_perfsim_VOLTAGE", OPT_BOOL,
-      &accelwattch_hybrid_configuration[HW_VOLTAGE],
-      "Get Chip Voltage for Accelwattch-Hybrid from Accel-Sim", "0");
-
-  // Output Data Formats
-  option_parser_register(
-      opp, "-power_trace_enabled", OPT_BOOL, &g_power_trace_enabled,
-      "produce a file for the power trace (1=On, 0=Off)", "0");
-
-  option_parser_register(
-      opp, "-power_trace_zlevel", OPT_INT32, &g_power_trace_zlevel,
-      "Compression level of the power trace output log (0=no comp, 9=highest)",
-      "6");
-
-  option_parser_register(
-      opp, "-steady_power_levels_enabled", OPT_BOOL,
-      &g_steady_power_levels_enabled,
-      "produce a file for the steady power levels (1=On, 0=Off)", "0");
-
-  option_parser_register(opp, "-steady_state_definition", OPT_CSTR,
-                         &gpu_steady_state_definition,
-                         "allowed deviation:number of samples", "8:4");
-}
 
 void memory_config::reg_options(class OptionParser *opp) {
   option_parser_register(opp, "-gpgpu_perf_sim_memcpy", OPT_BOOL,
@@ -388,15 +246,6 @@ void shader_core_config::reg_options(class OptionParser *opp) {
   option_parser_register(opp, "-gpgpu_perfect_mem", OPT_BOOL,
                          &gpgpu_perfect_mem,
                          "enable perfect memory mode (no cache miss)", "0");
-  option_parser_register(
-      opp, "-n_regfile_gating_group", OPT_UINT32, &n_regfile_gating_group,
-      "group of lanes that should be read/written together)", "4");
-  option_parser_register(
-      opp, "-gpgpu_clock_gated_reg_file", OPT_BOOL, &gpgpu_clock_gated_reg_file,
-      "enable clock gated reg file for power calculations", "0");
-  option_parser_register(
-      opp, "-gpgpu_clock_gated_lanes", OPT_BOOL, &gpgpu_clock_gated_lanes,
-      "enable clock gated lanes for power calculations", "0");
   option_parser_register(opp, "-gpgpu_shader_registers", OPT_UINT32,
                          &gpgpu_shader_registers,
                          "Number of registers per shader core. Limits number "
@@ -665,7 +514,6 @@ void gpgpu_sim_config::reg_options(option_parser_t opp) {
   gpgpu_functional_sim_config::reg_options(opp);
   m_shader_config.reg_options(opp);
   m_memory_config.reg_options(opp);
-  power_config::reg_options(opp);
   option_parser_register(opp, "-gpgpu_max_cycle", OPT_INT64, &gpu_max_cycle_opt,
                          "terminates gpu simulation early (0 = no limit)", "0");
   option_parser_register(opp, "-gpgpu_max_insn", OPT_INT64, &gpu_max_insn_opt,
@@ -963,20 +811,9 @@ gpgpu_sim::gpgpu_sim(const gpgpu_sim_config &config, gpgpu_context *ctx)
   ctx->ptx_parser->set_ptx_warp_size(m_shader_config);
   ptx_file_line_stats_create_exposed_latency_tracker(m_config.num_shader());
 
-#ifdef GPGPUSIM_POWER_MODEL
-  m_gpgpusim_wrapper = new gpgpu_sim_wrapper(
-      config.g_power_simulation_enabled, config.g_power_config_name,
-      config.g_power_simulation_mode, config.g_dvfs_enabled);
-#endif
-
   m_shader_stats = new shader_core_stats(m_shader_config);
   m_memory_stats = new memory_stats_t(m_config.num_shader(), m_shader_config,
                                       m_memory_config, this);
-  average_pipeline_duty_cycle = (float *)malloc(sizeof(float));
-  active_sms = (float *)malloc(sizeof(float));
-  m_power_stats =
-      new power_stat_t(m_shader_config, average_pipeline_duty_cycle, active_sms,
-                       m_shader_stats, m_memory_config, m_memory_stats);
 
   gpu_sim_insn = 0;
   gpu_tot_sim_insn = 0;
@@ -1026,9 +863,6 @@ gpgpu_sim::gpgpu_sim(const gpgpu_sim_config &config, gpgpu_context *ctx)
   m_last_issued_kernel = 0;
   m_last_cluster_issue = m_shader_config->n_simt_clusters -
                          1;  // this causes first launch to use simt cluster 0
-  *average_pipeline_duty_cycle = 0;
-  *active_sms = 0;
-
   last_liveness_message_time = 0;
 
   // Jin: functional simulation for CDP
@@ -1143,14 +977,6 @@ void gpgpu_sim::init() {
   partiton_reqs_in_parallel_util = 0;
   gpu_sim_cycle_parition_util = 0;
 
-// McPAT initialization function. Called on first launch of GPU
-#ifdef GPGPUSIM_POWER_MODEL
-  if (m_config.g_power_simulation_enabled) {
-    init_mcpat(m_config, m_gpgpusim_wrapper, m_config.gpu_stat_sample_freq,
-               gpu_tot_sim_insn, gpu_sim_insn);
-  }
-#endif
-
   reinit_clock_domains();
   gpgpu_ctx->func_sim->set_param_gpgpu_num_shaders(m_config.num_shader());
   for (unsigned i = 0; i < m_shader_config->n_simt_clusters; i++)
@@ -1198,10 +1024,6 @@ void gpgpu_sim::update_stats() {
   m_total_cta_launched = 0;
   gpu_completed_cta = 0;
   gpu_occupancy = occupancy_stats();
-}
-
-PowerscalingCoefficients *gpgpu_sim::get_scaling_coeffs() {
-  return m_gpgpusim_wrapper->get_scaling_coeffs();
 }
 
 void gpgpu_sim::print_stats(unsigned long long streamID) {
@@ -1456,7 +1278,8 @@ void gpgpu_sim::gpu_print_stat(unsigned long long streamID) {
   time_t curr_time;
   time(&curr_time);
   unsigned long long elapsed_time =
-      MAX(curr_time - gpgpu_ctx->the_gpgpusim->g_simulation_starttime, 1);
+      std::max<time_t>(
+          curr_time - gpgpu_ctx->the_gpgpusim->g_simulation_starttime, 1);
   printf("gpu_total_sim_rate=%u\n",
          (unsigned)((gpu_tot_sim_insn + gpu_sim_insn) / elapsed_time));
 
@@ -1477,28 +1300,6 @@ void gpgpu_sim::gpu_print_stat(unsigned long long streamID) {
   shader_print_scheduler_stat(stdout, false);
 
   m_shader_stats->print(stdout);
-#ifdef GPGPUSIM_POWER_MODEL
-  if (m_config.g_power_simulation_enabled) {
-    if (m_config.g_power_simulation_mode > 0) {
-      // if(!m_config.g_aggregate_power_stats)
-      mcpat_reset_perf_count(m_gpgpusim_wrapper);
-      calculate_hw_mcpat(m_config, getShaderCoreConfig(), m_gpgpusim_wrapper,
-                         m_power_stats, m_config.gpu_stat_sample_freq,
-                         gpu_tot_sim_cycle, gpu_sim_cycle, gpu_tot_sim_insn,
-                         gpu_sim_insn, m_config.g_power_simulation_mode,
-                         m_config.g_dvfs_enabled, m_config.g_hw_perf_file_name,
-                         m_config.g_hw_perf_bench_name, executed_kernel_name(),
-                         m_config.accelwattch_hybrid_configuration,
-                         m_config.g_aggregate_power_stats);
-    }
-    m_gpgpusim_wrapper->print_power_kernel_stats(
-        gpu_sim_cycle, gpu_tot_sim_cycle, gpu_tot_sim_insn + gpu_sim_insn,
-        kernel_info_str, true);
-    // if(!m_config.g_aggregate_power_stats)
-    mcpat_reset_perf_count(m_gpgpusim_wrapper);
-  }
-#endif
-
   // performance counter that are not local to one shader
   m_memory_stats->memlatstat_print(m_memory_config->m_n_mem,
                                    m_memory_config->nbk);
@@ -1559,14 +1360,7 @@ void gpgpu_sim::gpu_print_stat(unsigned long long streamID) {
                  [gpgpu_ctx->func_sim->g_ptx_kernel_count]);
   }
 
-#ifdef GPGPUSIM_POWER_MODEL
-  if (m_config.g_power_simulation_enabled) {
-    m_gpgpusim_wrapper->detect_print_steady_state(
-        1, gpu_tot_sim_insn + gpu_sim_insn);
-  }
-#endif
-
-  // Interconnect power stat print
+  // Interconnect traffic statistics
   long total_simt_to_mem = 0;
   long total_mem_to_simt = 0;
   long temp_stm = 0;
@@ -1952,24 +1746,12 @@ void gpgpu_sim::cycle() {
       else
         m_memory_partition_unit[i]
             ->dram_cycle();  // Issue the dram command (scheduler + delay model)
-      // Update performance counters for DRAM
-      m_memory_partition_unit[i]->set_dram_power_stats(
-          m_power_stats->pwr_mem_stat->n_cmd[CURRENT_STAT_IDX][i],
-          m_power_stats->pwr_mem_stat->n_activity[CURRENT_STAT_IDX][i],
-          m_power_stats->pwr_mem_stat->n_nop[CURRENT_STAT_IDX][i],
-          m_power_stats->pwr_mem_stat->n_act[CURRENT_STAT_IDX][i],
-          m_power_stats->pwr_mem_stat->n_pre[CURRENT_STAT_IDX][i],
-          m_power_stats->pwr_mem_stat->n_rd[CURRENT_STAT_IDX][i],
-          m_power_stats->pwr_mem_stat->n_wr[CURRENT_STAT_IDX][i],
-          m_power_stats->pwr_mem_stat->n_wr_WB[CURRENT_STAT_IDX][i],
-          m_power_stats->pwr_mem_stat->n_req[CURRENT_STAT_IDX][i]);
     }
   }
 
   // L2 operations follow L2 clock domain
   unsigned partiton_reqs_in_parallel_per_cycle = 0;
   if (clock_mask & L2) {
-    m_power_stats->pwr_mem_stat->l2_cache_stats[CURRENT_STAT_IDX].clear();
     for (unsigned i = 0; i < m_memory_config->m_n_mem_sub_partition; i++) {
       // move memory request from interconnect into memory partition (if not
       // backed up) Note:This needs to be called in DRAM clock domain if there
@@ -1983,10 +1765,6 @@ void gpgpu_sim::cycle() {
         if (mf) partiton_reqs_in_parallel_per_cycle++;
       }
       m_memory_sub_partition[i]->cache_cycle(gpu_sim_cycle + gpu_tot_sim_cycle);
-      if (m_config.g_power_simulation_enabled) {
-        m_memory_sub_partition[i]->accumulate_L2cache_stats(
-            m_power_stats->pwr_mem_stat->l2_cache_stats[CURRENT_STAT_IDX]);
-      }
     }
   }
   partiton_reqs_in_parallel += partiton_reqs_in_parallel_per_cycle;
@@ -2001,32 +1779,14 @@ void gpgpu_sim::cycle() {
 
   if (clock_mask & CORE) {
     // L1 cache + shader core pipeline stages
-    m_power_stats->pwr_mem_stat->core_cache_stats[CURRENT_STAT_IDX].clear();
     for (unsigned i = 0; i < m_shader_config->n_simt_clusters; i++) {
       if (m_cluster[i]->get_not_completed() || get_more_cta_left()) {
         m_cluster[i]->core_cycle();
-        *active_sms += m_cluster[i]->get_n_active_sms();
-      }
-      // Update core icnt/cache stats for AccelWattch
-      if (m_config.g_power_simulation_enabled) {
-        m_cluster[i]->get_icnt_stats(
-            m_power_stats->pwr_mem_stat->n_simt_to_mem[CURRENT_STAT_IDX][i],
-            m_power_stats->pwr_mem_stat->n_mem_to_simt[CURRENT_STAT_IDX][i]);
-        m_cluster[i]->get_cache_stats(
-            m_power_stats->pwr_mem_stat->core_cache_stats[CURRENT_STAT_IDX]);
       }
       m_cluster[i]->get_current_occupancy(
           gpu_occupancy.aggregate_warp_slot_filled,
           gpu_occupancy.aggregate_theoretical_warp_slots);
     }
-    float temp = 0;
-    for (unsigned i = 0; i < m_shader_config->num_shader(); i++) {
-      temp += m_shader_stats->m_pipeline_duty_cycle[i];
-    }
-    temp = temp / m_shader_config->num_shader();
-    *average_pipeline_duty_cycle = ((*average_pipeline_duty_cycle) + temp);
-    // cout<<"Average pipeline duty cycle:
-    // "<<*average_pipeline_duty_cycle<<endl;
 
     if (g_single_step &&
         ((gpu_sim_cycle + gpu_tot_sim_cycle) >= g_single_step)) {
@@ -2035,18 +1795,6 @@ void gpgpu_sim::cycle() {
     gpu_sim_cycle++;
 
     if (g_interactive_debugger_enabled) gpgpu_debug();
-
-      // McPAT main cycle (interface with McPAT)
-#ifdef GPGPUSIM_POWER_MODEL
-    if (m_config.g_power_simulation_enabled) {
-      if (m_config.g_power_simulation_mode == 0) {
-        mcpat_cycle(m_config, getShaderCoreConfig(), m_gpgpusim_wrapper,
-                    m_power_stats, m_config.gpu_stat_sample_freq,
-                    gpu_tot_sim_cycle, gpu_sim_cycle, gpu_tot_sim_insn,
-                    gpu_sim_insn, m_config.g_dvfs_enabled);
-      }
-    }
-#endif
 
     issue_block2core();
     decrement_kernel_latency();
@@ -2091,7 +1839,8 @@ void gpgpu_sim::cycle() {
       time_t curr_time;
       time(&curr_time);
       unsigned long long elapsed_time =
-          MAX(curr_time - gpgpu_ctx->the_gpgpusim->g_simulation_starttime, 1);
+          std::max<time_t>(
+              curr_time - gpgpu_ctx->the_gpgpusim->g_simulation_starttime, 1);
       if ((elapsed_time - last_liveness_message_time) >=
               m_config.liveness_message_freq &&
           DTRACE(LIVENESS)) {

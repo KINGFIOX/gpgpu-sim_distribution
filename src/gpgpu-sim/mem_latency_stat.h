@@ -119,10 +119,6 @@ class memory_stats_t {
   unsigned int **max_servicetime2samerow;  // max_servicetime2samerow[dram chip
                                            // id][bank id]
 
-  // Power stats
-  unsigned total_n_access;
-  unsigned total_n_reads;
-  unsigned total_n_writes;
 };
 
 #endif /*MEM_LATENCY_STAT_H*/

@@ -45,11 +45,9 @@
 //  $Date: 2007/06/27 23:10:17 $
 //  $Id: flitchannel.cpp 5516 2013-10-06 02:14:48Z dub $
 // ----------------------------------------------------------------------
-FlitChannel::FlitChannel(Module * parent, string const & name, int classes)
+FlitChannel::FlitChannel(Module * parent, string const & name, int)
 : Channel<Flit>(parent, name), _routerSource(NULL), _routerSourcePort(-1), 
-  _routerSink(NULL), _routerSinkPort(-1), _idle(0) {
-  _active.resize(classes, 0);
-}
+  _routerSink(NULL), _routerSinkPort(-1) { }
 
 void FlitChannel::SetSource(Router const * const router, int port) {
   _routerSource = router;
@@ -59,15 +57,6 @@ void FlitChannel::SetSource(Router const * const router, int port) {
 void FlitChannel::SetSink(Router const * const router, int port) {
   _routerSink = router;
   _routerSinkPort = port;
-}
-
-void FlitChannel::Send(Flit * f) {
-  if(f) {
-    ++_active[f->cl];
-  } else {
-    ++_idle;
-  }
-  Channel<Flit>::Send(f);
 }
 
 void FlitChannel::ReadInputs() {

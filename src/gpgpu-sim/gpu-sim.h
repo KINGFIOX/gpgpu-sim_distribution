@@ -72,104 +72,6 @@ extern tr1_hash_map<new_addr_type, unsigned> address_random_interleaving;
 
 enum dram_ctrl_t { DRAM_FIFO = 0, DRAM_FRFCFS = 1 };
 
-enum hw_perf_t {
-  HW_BENCH_NAME = 0,
-  HW_KERNEL_NAME,
-  HW_L1_RH,
-  HW_L1_RM,
-  HW_L1_WH,
-  HW_L1_WM,
-  HW_CC_ACC,
-  HW_SHRD_ACC,
-  HW_DRAM_RD,
-  HW_DRAM_WR,
-  HW_L2_RH,
-  HW_L2_RM,
-  HW_L2_WH,
-  HW_L2_WM,
-  HW_NOC,
-  HW_PIPE_DUTY,
-  HW_NUM_SM_IDLE,
-  HW_CYCLES,
-  HW_VOLTAGE,
-  HW_TOTAL_STATS
-};
-
-struct power_config {
-  power_config() { m_valid = true; }
-  void init() {
-    // initialize file name if it is not set
-    time_t curr_time;
-    time(&curr_time);
-    char *date = ctime(&curr_time);
-    char *s = date;
-    while (*s) {
-      if (*s == ' ' || *s == '\t' || *s == ':') *s = '-';
-      if (*s == '\n' || *s == '\r') *s = 0;
-      s++;
-    }
-    char buf1[1024];
-    // snprintf(buf1, 1024, "accelwattch_power_report__%s.log", date);
-    snprintf(buf1, 1024, "accelwattch_power_report.log");
-    g_power_filename = strdup(buf1);
-    char buf2[1024];
-    snprintf(buf2, 1024, "gpgpusim_power_trace_report__%s.log.gz", date);
-    g_power_trace_filename = strdup(buf2);
-    char buf3[1024];
-    snprintf(buf3, 1024, "gpgpusim_metric_trace_report__%s.log.gz", date);
-    g_metric_trace_filename = strdup(buf3);
-    char buf4[1024];
-    snprintf(buf4, 1024, "gpgpusim_steady_state_tracking_report__%s.log.gz",
-             date);
-    g_steady_state_tracking_filename = strdup(buf4);
-    // for(int i =0; i< hw_perf_t::HW_TOTAL_STATS; i++){
-    //   accelwattch_hybrid_configuration[i] = 0;
-    // }
-
-    if (g_steady_power_levels_enabled) {
-      sscanf(gpu_steady_state_definition, "%lf:%lf",
-             &gpu_steady_power_deviation, &gpu_steady_min_period);
-    }
-
-    // NOTE: After changing the nonlinear model to only scaling idle core,
-    // NOTE: The min_inc_per_active_sm is not used any more
-    // if (g_use_nonlinear_model)
-    //   sscanf(gpu_nonlinear_model_config, "%lf:%lf", &gpu_idle_core_power,
-    //          &gpu_min_inc_per_active_sm);
-  }
-  void reg_options(class OptionParser *opp);
-
-  char *g_power_config_name;
-
-  bool m_valid;
-  bool g_power_simulation_enabled;
-  bool g_power_trace_enabled;
-  bool g_steady_power_levels_enabled;
-  bool g_power_per_cycle_dump;
-  bool g_power_simulator_debug;
-  char *g_power_filename;
-  char *g_power_trace_filename;
-  char *g_metric_trace_filename;
-  char *g_steady_state_tracking_filename;
-  int g_power_trace_zlevel;
-  char *gpu_steady_state_definition;
-  double gpu_steady_power_deviation;
-  double gpu_steady_min_period;
-
-  char *g_hw_perf_file_name;
-  char *g_hw_perf_bench_name;
-  int g_power_simulation_mode;
-  bool g_dvfs_enabled;
-  bool g_aggregate_power_stats;
-  bool accelwattch_hybrid_configuration[hw_perf_t::HW_TOTAL_STATS];
-
-  // Nonlinear power model
-  bool g_use_nonlinear_model;
-  char *gpu_nonlinear_model_config;
-  double gpu_idle_core_power;
-  double gpu_min_inc_per_active_sm;
-};
-
 class memory_config {
  public:
   memory_config(gpgpu_context *ctx) {
@@ -357,8 +259,7 @@ class memory_config {
 
 extern bool g_interactive_debugger_enabled;
 
-class gpgpu_sim_config : public power_config,
-                         public gpgpu_functional_sim_config {
+class gpgpu_sim_config : public gpgpu_functional_sim_config {
  public:
   gpgpu_sim_config(gpgpu_context *ctx)
       : m_shader_config(ctx), m_memory_config(ctx) {
@@ -375,7 +276,6 @@ class gpgpu_sim_config : public power_config,
     ptx_set_tex_cache_linesize(m_shader_config.m_L1T_config.get_line_sz());
     m_memory_config.init();
     init_clock_domains();
-    power_config::init();
     Trace::init();
 
     // initialize file name if it is not set
@@ -565,7 +465,6 @@ class gpgpu_sim : public gpgpu_t {
   bool kernel_more_cta_left(kernel_info_t *kernel) const;
   bool hit_max_cta_count() const;
   kernel_info_t *select_kernel();
-  PowerscalingCoefficients *get_scaling_coeffs();
   void decrement_kernel_latency();
 
   const gpgpu_sim_config &get_config() const { return m_config; }
@@ -636,8 +535,6 @@ class gpgpu_sim : public gpgpu_t {
   unsigned gpu_completed_cta;
 
   unsigned m_last_cluster_issue;
-  float *average_pipeline_duty_cycle;
-  float *active_sms;
   // time of next rising edge
   double core_time;
   double icnt_time;
@@ -657,8 +554,6 @@ class gpgpu_sim : public gpgpu_t {
   // stats
   class shader_core_stats *m_shader_stats;
   class memory_stats_t *m_memory_stats;
-  class power_stat_t *m_power_stats;
-  class gpgpu_sim_wrapper *m_gpgpusim_wrapper;
   unsigned long long last_gpu_sim_insn;
 
   unsigned long long last_liveness_message_time;

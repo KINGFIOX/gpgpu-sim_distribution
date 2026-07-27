@@ -37,7 +37,6 @@
 #include "routefunc.hpp"
 #include "globals.hpp"
 #include "trafficmanager.hpp"
-#include "power_module.hpp"
 #include "mem_fetch.h"
 #include "flit.hpp"
 #include "gputrafficmanager.hpp"
@@ -67,11 +66,6 @@ InterconnectInterface::InterconnectInterface()
 InterconnectInterface::~InterconnectInterface()
 {
   for (int i=0; i<_subnets; ++i) {
-    ///Power analysis
-    if(_icnt_config->GetInt("sim_power") > 0){
-      Power_Module pnet(_net[i], *_icnt_config);
-      pnet.run();
-    }
     delete _net[i];
   }
 
@@ -87,7 +81,6 @@ void InterconnectInterface::CreateInterconnect(unsigned n_shader, unsigned n_mem
 
   InitializeRoutingMap(*_icnt_config);
 
-  gPrintActivity = (_icnt_config->GetInt("print_activity") > 0);
   gTrace = (_icnt_config->GetInt("viewer_trace") > 0);
 
   string watch_out_file = _icnt_config->GetStr( "watch_out" );

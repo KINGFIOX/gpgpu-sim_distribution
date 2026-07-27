@@ -45,8 +45,6 @@ class Credit;
 class Buffer;
 class BufferState;
 class Allocator;
-class SwitchMonitor;
-class BufferMonitor;
 
 class IQRouter : public Router {
 
@@ -139,15 +137,6 @@ class IQRouter : public Router {
   
   void _UpdateNOQ(int input, int vc, Flit const * f);
 
-  // ----------------------------------------
-  //
-  //   Router Power Modellingyes
-  //
-  // ----------------------------------------
-
-  SwitchMonitor * _switchMonitor ;
-  BufferMonitor * _bufferMonitor ;
-  
 public:
 
   IQRouter( Configuration const & config,
@@ -174,9 +163,6 @@ public:
   virtual vector<int> UsedCredits() const;
   virtual vector<int> FreeCredits() const;
   virtual vector<int> MaxCredits() const;
-
-  SwitchMonitor const * const GetSwitchMonitor() const {return _switchMonitor;}
-  BufferMonitor const * const GetBufferMonitor() const {return _bufferMonitor;}
 
 };
 

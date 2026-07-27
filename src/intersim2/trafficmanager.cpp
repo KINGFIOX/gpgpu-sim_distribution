@@ -35,7 +35,9 @@
 #include "booksim_config.hpp"
 #include "trafficmanager.hpp"
 #include "batchtrafficmanager.hpp"
+#ifdef CREATE_LIBRARY
 #include "gputrafficmanager.hpp"
+#endif
 #include "random_utils.hpp" 
 #include "vc.hpp"
 #include "packet_reply_info.hpp"
@@ -45,14 +47,15 @@ TrafficManager * TrafficManager::New(Configuration const & config,
 {
     TrafficManager * result = NULL;
     string sim_type = config.GetStr("sim_type");
-    if((sim_type == "latency") || (sim_type == "throughput")) {
+    if ((sim_type == "latency") || (sim_type == "throughput")) {
         result = new TrafficManager(config, net);
-    } else if(sim_type == "batch") {
+    } else if (sim_type == "batch") {
         result = new BatchTrafficManager(config, net);
-  } else if(sim_type == "gpgpusim") {
-    result = new GPUTrafficManager(config, net);
-  }
-  else {
+#ifdef CREATE_LIBRARY
+    } else if (sim_type == "gpgpusim") {
+        result = new GPUTrafficManager(config, net);
+#endif
+    } else {
         cerr << "Unknown simulation type: " << sim_type << endl;
     } 
     return result;
@@ -1673,8 +1676,6 @@ bool TrafficManager::Run( )
         }
         _empty_network = false;
 
-        //for the love of god don't ever say "Time taken" anywhere else
-        //the power script depend on it
         cout << "Time taken is " << _time << " cycles" <<endl; 
 
         if(_stats_out) {

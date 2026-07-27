@@ -210,17 +210,6 @@ void dram_t::scheduler_frfcfs() {
   while (!mrqq->empty()) {
     dram_req_t *req = mrqq->pop();
 
-    // Power stats
-    // if(req->data->get_type() != READ_REPLY && req->data->get_type() !=
-    // WRITE_ACK)
-    m_stats->total_n_access++;
-
-    if (req->data->get_type() == WRITE_REQUEST) {
-      m_stats->total_n_writes++;
-    } else if (req->data->get_type() == READ_REQUEST) {
-      m_stats->total_n_reads++;
-    }
-
     req->data->set_status(IN_PARTITION_MC_INPUT_QUEUE,
                           m_gpu->gpu_sim_cycle + m_gpu->gpu_tot_sim_cycle);
     sched->add_req(req);

@@ -483,10 +483,6 @@ shader_core_ctx::shader_core_ctx(class gpgpu_sim *gpu,
   m_sid = shader_id;
   m_tpc = tpc_id;
 
-  if (get_gpu()->get_config().g_power_simulation_enabled) {
-    scaling_coeffs = get_gpu()->get_scaling_coeffs();
-  }
-
   m_last_inst_gpu_sim_cycle = 0;
   m_last_inst_gpu_tot_sim_cycle = 0;
 
@@ -889,27 +885,11 @@ void shader_core_ctx::decode() {
     m_warp[m_inst_fetch_buffer.m_warp_id]->ibuffer_fill(0, pI1);
     m_warp[m_inst_fetch_buffer.m_warp_id]->inc_inst_in_pipeline();
     if (pI1) {
-      m_stats->m_num_decoded_insn[m_sid]++;
-      if ((pI1->oprnd_type == INT_OP) ||
-          (pI1->oprnd_type == UN_OP)) {  // these counters get added up in mcPat
-                                         // to compute scheduler power
-        m_stats->m_num_INTdecoded_insn[m_sid]++;
-      } else if (pI1->oprnd_type == FP_OP) {
-        m_stats->m_num_FPdecoded_insn[m_sid]++;
-      }
       const warp_inst_t *pI2 =
           get_next_inst(m_inst_fetch_buffer.m_warp_id, pc + pI1->isize);
       if (pI2) {
         m_warp[m_inst_fetch_buffer.m_warp_id]->ibuffer_fill(1, pI2);
         m_warp[m_inst_fetch_buffer.m_warp_id]->inc_inst_in_pipeline();
-        m_stats->m_num_decoded_insn[m_sid]++;
-        if ((pI1->oprnd_type == INT_OP) ||
-            (pI1->oprnd_type == UN_OP)) {  // these counters get added up in
-                                           // mcPat to compute scheduler power
-          m_stats->m_num_INTdecoded_insn[m_sid]++;
-        } else if (pI2->oprnd_type == FP_OP) {
-          m_stats->m_num_FPdecoded_insn[m_sid]++;
-        }
       }
     }
     m_inst_fetch_buffer.m_valid = false;
@@ -1804,7 +1784,6 @@ void shader_core_ctx::execute() {
   for (unsigned n = 0; n < m_num_function_units; n++) {
     unsigned multiplier = m_fu[n]->clock_multiplier();
     for (unsigned c = 0; c < multiplier; c++) m_fu[n]->cycle();
-    m_fu[n]->active_lanes_in_pipeline();
     unsigned issue_port = m_issue_port[n];
     register_set &issue_inst = m_pipeline_reg[issue_port];
     unsigned reg_id;
@@ -1905,35 +1884,13 @@ void shader_core_ctx::warp_inst_complete(const warp_inst_t &inst) {
       printf("[warp_inst_complete] uid=%u core=%u warp=%u pc=%#x @ time=%llu \n",
              inst.get_uid(), m_sid, inst.warp_id(), inst.pc,  m_gpu->gpu_tot_sim_cycle +  m_gpu->gpu_sim_cycle);
 #endif
-  if (inst.op_pipe == SP__OP)
-    m_stats->m_num_sp_committed[m_sid]++;
-  else if (inst.op_pipe == SFU__OP)
-    m_stats->m_num_sfu_committed[m_sid]++;
-  else if (inst.op_pipe == MEM__OP)
-    m_stats->m_num_mem_committed[m_sid]++;
-
-  if (m_config->gpgpu_clock_gated_lanes == false)
-    m_stats->m_num_sim_insn[m_sid] += m_config->warp_size;
-  else
-    m_stats->m_num_sim_insn[m_sid] += inst.active_count();
-
+  m_stats->m_num_sim_insn[m_sid] += inst.active_count();
   m_stats->m_num_sim_winsn[m_sid]++;
   m_gpu->gpu_sim_insn += inst.active_count();
   inst.completed(m_gpu->gpu_tot_sim_cycle + m_gpu->gpu_sim_cycle);
 }
 
 void shader_core_ctx::writeback() {
-  unsigned max_committed_thread_instructions =
-      m_config->warp_size *
-      (m_config->pipe_widths[EX_WB]);  // from the functional units
-  m_stats->m_pipeline_duty_cycle[m_sid] =
-      ((float)(m_stats->m_num_sim_insn[m_sid] -
-               m_stats->m_last_num_sim_insn[m_sid])) /
-      max_committed_thread_instructions;
-
-  m_stats->m_last_num_sim_insn[m_sid] = m_stats->m_num_sim_insn[m_sid];
-  m_stats->m_last_num_sim_winsn[m_sid] = m_stats->m_num_sim_winsn[m_sid];
-
   warp_inst_t **preg = m_pipeline_reg[EX_WB].get_ready();
   warp_inst_t *pipe_reg = (preg == NULL) ? NULL : *preg;
   while (preg and !pipe_reg->empty()) {
@@ -2363,86 +2320,11 @@ tensor_core::tensor_core(register_set *result_port,
 }
 
 void sfu::issue(register_set &source_reg) {
-  warp_inst_t **ready_reg =
-      source_reg.get_ready(m_config->sub_core_model, m_issue_reg_id);
-  // m_core->incexecstat((*ready_reg));
-
-  (*ready_reg)->op_pipe = SFU__OP;
-  m_core->incsfu_stat(m_core->get_config()->warp_size, (*ready_reg)->latency);
   pipelined_simd_unit::issue(source_reg);
 }
 
 void tensor_core::issue(register_set &source_reg) {
-  warp_inst_t **ready_reg =
-      source_reg.get_ready(m_config->sub_core_model, m_issue_reg_id);
-  // m_core->incexecstat((*ready_reg));
-
-  (*ready_reg)->op_pipe = TENSOR_CORE__OP;
-  m_core->incsfu_stat(m_core->get_config()->warp_size, (*ready_reg)->latency);
   pipelined_simd_unit::issue(source_reg);
-}
-
-unsigned pipelined_simd_unit::get_active_lanes_in_pipeline() {
-  active_mask_t active_lanes;
-  active_lanes.reset();
-  if (m_core->get_gpu()->get_config().g_power_simulation_enabled) {
-    for (unsigned stage = 0; (stage + 1) < m_pipeline_depth; stage++) {
-      if (!m_pipeline_reg[stage]->empty())
-        active_lanes |= m_pipeline_reg[stage]->get_active_mask();
-    }
-  }
-  return active_lanes.count();
-}
-
-void ldst_unit::active_lanes_in_pipeline() {
-  unsigned active_count = pipelined_simd_unit::get_active_lanes_in_pipeline();
-  assert(active_count <= m_core->get_config()->warp_size);
-  m_core->incfumemactivelanes_stat(active_count);
-}
-
-void sp_unit::active_lanes_in_pipeline() {
-  unsigned active_count = pipelined_simd_unit::get_active_lanes_in_pipeline();
-  assert(active_count <= m_core->get_config()->warp_size);
-  m_core->incspactivelanes_stat(active_count);
-  m_core->incfuactivelanes_stat(active_count);
-  m_core->incfumemactivelanes_stat(active_count);
-}
-void dp_unit::active_lanes_in_pipeline() {
-  unsigned active_count = pipelined_simd_unit::get_active_lanes_in_pipeline();
-  assert(active_count <= m_core->get_config()->warp_size);
-  // m_core->incspactivelanes_stat(active_count);
-  m_core->incfuactivelanes_stat(active_count);
-  m_core->incfumemactivelanes_stat(active_count);
-}
-void specialized_unit::active_lanes_in_pipeline() {
-  unsigned active_count = pipelined_simd_unit::get_active_lanes_in_pipeline();
-  assert(active_count <= m_core->get_config()->warp_size);
-  m_core->incspactivelanes_stat(active_count);
-  m_core->incfuactivelanes_stat(active_count);
-  m_core->incfumemactivelanes_stat(active_count);
-}
-
-void int_unit::active_lanes_in_pipeline() {
-  unsigned active_count = pipelined_simd_unit::get_active_lanes_in_pipeline();
-  assert(active_count <= m_core->get_config()->warp_size);
-  m_core->incspactivelanes_stat(active_count);
-  m_core->incfuactivelanes_stat(active_count);
-  m_core->incfumemactivelanes_stat(active_count);
-}
-void sfu::active_lanes_in_pipeline() {
-  unsigned active_count = pipelined_simd_unit::get_active_lanes_in_pipeline();
-  assert(active_count <= m_core->get_config()->warp_size);
-  m_core->incsfuactivelanes_stat(active_count);
-  m_core->incfuactivelanes_stat(active_count);
-  m_core->incfumemactivelanes_stat(active_count);
-}
-
-void tensor_core::active_lanes_in_pipeline() {
-  unsigned active_count = pipelined_simd_unit::get_active_lanes_in_pipeline();
-  assert(active_count <= m_core->get_config()->warp_size);
-  m_core->incsfuactivelanes_stat(active_count);
-  m_core->incfuactivelanes_stat(active_count);
-  m_core->incfumemactivelanes_stat(active_count);
 }
 
 sp_unit::sp_unit(register_set *result_port, const shader_core_config *config,
@@ -2477,38 +2359,18 @@ int_unit::int_unit(register_set *result_port, const shader_core_config *config,
 }
 
 void sp_unit ::issue(register_set &source_reg) {
-  warp_inst_t **ready_reg =
-      source_reg.get_ready(m_config->sub_core_model, m_issue_reg_id);
-  // m_core->incexecstat((*ready_reg));
-  (*ready_reg)->op_pipe = SP__OP;
-  m_core->incsp_stat(m_core->get_config()->warp_size, (*ready_reg)->latency);
   pipelined_simd_unit::issue(source_reg);
 }
 
 void dp_unit ::issue(register_set &source_reg) {
-  warp_inst_t **ready_reg =
-      source_reg.get_ready(m_config->sub_core_model, m_issue_reg_id);
-  // m_core->incexecstat((*ready_reg));
-  (*ready_reg)->op_pipe = DP__OP;
-  m_core->incsp_stat(m_core->get_config()->warp_size, (*ready_reg)->latency);
   pipelined_simd_unit::issue(source_reg);
 }
 
 void specialized_unit ::issue(register_set &source_reg) {
-  warp_inst_t **ready_reg =
-      source_reg.get_ready(m_config->sub_core_model, m_issue_reg_id);
-  // m_core->incexecstat((*ready_reg));
-  (*ready_reg)->op_pipe = SPECIALIZED__OP;
-  m_core->incsp_stat(m_core->get_config()->warp_size, (*ready_reg)->latency);
   pipelined_simd_unit::issue(source_reg);
 }
 
 void int_unit ::issue(register_set &source_reg) {
-  warp_inst_t **ready_reg =
-      source_reg.get_ready(m_config->sub_core_model, m_issue_reg_id);
-  // m_core->incexecstat((*ready_reg));
-  (*ready_reg)->op_pipe = INTP__OP;
-  m_core->incsp_stat(m_core->get_config()->warp_size, (*ready_reg)->latency);
   pipelined_simd_unit::issue(source_reg);
 }
 
@@ -2553,11 +2415,6 @@ void pipelined_simd_unit::cycle() {
 
 void pipelined_simd_unit::issue(register_set &source_reg) {
   // move_warp(m_dispatch_reg,source_reg);
-  bool partition_issue =
-      m_config->sub_core_model && this->is_issue_partitioned();
-  warp_inst_t **ready_reg =
-      source_reg.get_ready(partition_issue, m_issue_reg_id);
-  m_core->incexecstat((*ready_reg));
   // source_reg.move_out_to(m_dispatch_reg);
   simd_function_unit::issue(source_reg);
 }
@@ -2669,10 +2526,8 @@ void ldst_unit::issue(register_set &reg_set) {
     }
   }
 
-  inst->op_pipe = MEM__OP;
   // stat collection
   m_core->mem_instruction_stats(*inst);
-  m_core->incmem_stat(m_core->get_config()->warp_size, 1);
   pipelined_simd_unit::issue(reg_set);
 }
 
@@ -3241,71 +3096,6 @@ void warp_inst_t::print(FILE *fout) const {
   fprintf(fout, "]: ");
   m_config->gpgpu_ctx->func_sim->ptx_print_insn(pc, fout);
   fprintf(fout, "\n");
-}
-void shader_core_ctx::incexecstat(warp_inst_t *&inst) {
-  // Latency numbers for next operations are used to scale the power values
-  // for special operations, according observations from microbenchmarking
-  // TODO: put these numbers in the xml configuration
-  if (get_gpu()->get_config().g_power_simulation_enabled) {
-    switch (inst->sp_op) {
-      case INT__OP:
-        incialu_stat(inst->active_count(), scaling_coeffs->int_coeff);
-        break;
-      case INT_MUL_OP:
-        incimul_stat(inst->active_count(), scaling_coeffs->int_mul_coeff);
-        break;
-      case INT_MUL24_OP:
-        incimul24_stat(inst->active_count(), scaling_coeffs->int_mul24_coeff);
-        break;
-      case INT_MUL32_OP:
-        incimul32_stat(inst->active_count(), scaling_coeffs->int_mul32_coeff);
-        break;
-      case INT_DIV_OP:
-        incidiv_stat(inst->active_count(), scaling_coeffs->int_div_coeff);
-        break;
-      case FP__OP:
-        incfpalu_stat(inst->active_count(), scaling_coeffs->fp_coeff);
-        break;
-      case FP_MUL_OP:
-        incfpmul_stat(inst->active_count(), scaling_coeffs->fp_mul_coeff);
-        break;
-      case FP_DIV_OP:
-        incfpdiv_stat(inst->active_count(), scaling_coeffs->fp_div_coeff);
-        break;
-      case DP___OP:
-        incdpalu_stat(inst->active_count(), scaling_coeffs->dp_coeff);
-        break;
-      case DP_MUL_OP:
-        incdpmul_stat(inst->active_count(), scaling_coeffs->dp_mul_coeff);
-        break;
-      case DP_DIV_OP:
-        incdpdiv_stat(inst->active_count(), scaling_coeffs->dp_div_coeff);
-        break;
-      case FP_SQRT_OP:
-        incsqrt_stat(inst->active_count(), scaling_coeffs->sqrt_coeff);
-        break;
-      case FP_LG_OP:
-        inclog_stat(inst->active_count(), scaling_coeffs->log_coeff);
-        break;
-      case FP_SIN_OP:
-        incsin_stat(inst->active_count(), scaling_coeffs->sin_coeff);
-        break;
-      case FP_EXP_OP:
-        incexp_stat(inst->active_count(), scaling_coeffs->exp_coeff);
-        break;
-      case TENSOR__OP:
-        inctensor_stat(inst->active_count(), scaling_coeffs->tensor_coeff);
-        break;
-      case TEX__OP:
-        inctex_stat(inst->active_count(), scaling_coeffs->tex_coeff);
-        break;
-      default:
-        break;
-    }
-    if (inst->const_cache_operand)  // warp has const address space load as one
-                                    // operand
-      inc_const_accesses(1);
-  }
 }
 void shader_core_ctx::print_stage(unsigned int stage, FILE *fout) const {
   m_pipeline_reg[stage].print(fout);
@@ -4047,8 +3837,8 @@ void shader_core_ctx::get_L1T_sub_stats(struct cache_sub_stats &css) const {
   m_ldst_unit->get_L1T_sub_stats(css);
 }
 
-void shader_core_ctx::get_icnt_power_stats(long &n_simt_to_mem,
-                                           long &n_mem_to_simt) const {
+void shader_core_ctx::get_icnt_stats(long &n_simt_to_mem,
+                                     long &n_mem_to_simt) const {
   n_simt_to_mem += m_stats->n_simt_to_mem[m_sid];
   n_mem_to_simt += m_stats->n_mem_to_simt[m_sid];
 }
@@ -4203,7 +3993,6 @@ unsigned register_bank(int regnum, int wid, unsigned num_banks,
 bool opndcoll_rfu_t::writeback(warp_inst_t &inst) {
   assert(!inst.empty());
 
-  std::list<unsigned> regs = m_shader->get_regs_written(inst);
   for (unsigned op = 0; op < MAX_REG_OPERANDS; op++) {
     int reg_num = inst.arch_reg.dst[op];  // this math needs to match that used
                                           // in function_info::ptx_decode_inst
@@ -4221,25 +4010,6 @@ bool opndcoll_rfu_t::writeback(warp_inst_t &inst) {
       }
     }
   }
-  for (unsigned i = 0; i < (unsigned)regs.size(); i++) {
-    if (m_shader->get_config()->gpgpu_clock_gated_reg_file) {
-      unsigned active_count = 0;
-      for (unsigned i = 0; i < m_shader->get_config()->warp_size;
-           i = i + m_shader->get_config()->n_regfile_gating_group) {
-        for (unsigned j = 0; j < m_shader->get_config()->n_regfile_gating_group;
-             j++) {
-          if (inst.get_active_mask().test(i + j)) {
-            active_count += m_shader->get_config()->n_regfile_gating_group;
-            break;
-          }
-        }
-      }
-      m_shader->incregfile_writes(active_count);
-    } else {
-      m_shader->incregfile_writes(
-          m_shader->get_config()->warp_size);  // inst.active_count());
-    }
-  }
   return true;
 }
 
@@ -4248,26 +4018,6 @@ void opndcoll_rfu_t::dispatch_ready_cu() {
     dispatch_unit_t &du = m_dispatch_units[p];
     collector_unit_t *cu = du.find_ready();
     if (cu) {
-      for (unsigned i = 0; i < (cu->get_num_operands() - cu->get_num_regs());
-           i++) {
-        if (m_shader->get_config()->gpgpu_clock_gated_reg_file) {
-          unsigned active_count = 0;
-          for (unsigned i = 0; i < m_shader->get_config()->warp_size;
-               i = i + m_shader->get_config()->n_regfile_gating_group) {
-            for (unsigned j = 0;
-                 j < m_shader->get_config()->n_regfile_gating_group; j++) {
-              if (cu->get_active_mask().test(i + j)) {
-                active_count += m_shader->get_config()->n_regfile_gating_group;
-                break;
-              }
-            }
-          }
-          m_shader->incnon_rf_operands(active_count);
-        } else {
-          m_shader->incnon_rf_operands(
-              m_shader->get_config()->warp_size);  // cu->get_active_count());
-        }
-      }
       cu->dispatch();
     }
   }
@@ -4333,23 +4083,6 @@ void opndcoll_rfu_t::allocate_reads() {
     unsigned cu = op.get_oc_id();
     unsigned operand = op.get_operand();
     m_cu[cu]->collect_operand(operand);
-    if (m_shader->get_config()->gpgpu_clock_gated_reg_file) {
-      unsigned active_count = 0;
-      for (unsigned i = 0; i < m_shader->get_config()->warp_size;
-           i = i + m_shader->get_config()->n_regfile_gating_group) {
-        for (unsigned j = 0; j < m_shader->get_config()->n_regfile_gating_group;
-             j++) {
-          if (op.get_active_mask().test(i + j)) {
-            active_count += m_shader->get_config()->n_regfile_gating_group;
-            break;
-          }
-        }
-      }
-      m_shader->incregfile_reads(active_count);
-    } else {
-      m_shader->incregfile_reads(
-          m_shader->get_config()->warp_size);  // op.get_active_count());
-    }
   }
 }
 
@@ -4506,13 +4239,6 @@ unsigned simt_core_cluster::get_n_active_cta() const {
   unsigned n = 0;
   for (unsigned i = 0; i < m_config->n_simt_cores_per_cluster; i++)
     n += m_core[i]->get_n_active_cta();
-  return n;
-}
-
-unsigned simt_core_cluster::get_n_active_sms() const {
-  unsigned n = 0;
-  for (unsigned i = 0; i < m_config->n_simt_cores_per_cluster; i++)
-    n += m_core[i]->isactive();
   return n;
 }
 
@@ -4714,7 +4440,7 @@ void simt_core_cluster::get_icnt_stats(long &n_simt_to_mem,
   long simt_to_mem = 0;
   long mem_to_simt = 0;
   for (unsigned i = 0; i < m_config->n_simt_cores_per_cluster; ++i) {
-    m_core[i]->get_icnt_power_stats(simt_to_mem, mem_to_simt);
+    m_core[i]->get_icnt_stats(simt_to_mem, mem_to_simt);
   }
   n_simt_to_mem = simt_to_mem;
   n_mem_to_simt = mem_to_simt;

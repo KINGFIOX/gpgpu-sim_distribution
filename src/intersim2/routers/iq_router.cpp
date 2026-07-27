@@ -44,8 +44,6 @@
 #include "buffer_state.hpp"
 #include "roundrobin_arb.hpp"
 #include "allocator.hpp"
-#include "switch_monitor.hpp"
-#include "buffer_monitor.hpp"
 
 IQRouter::IQRouter( Configuration const & config, Module *parent, 
 		    string const & name, int id, int inputs, int outputs )
@@ -168,9 +166,6 @@ IQRouter::IQRouter( Configuration const & config, Module *parent,
   _switch_hold_out.resize(_outputs*_output_speedup, -1);
   _switch_hold_vc.resize(_inputs*_input_speedup, -1);
 
-  _bufferMonitor = new BufferMonitor(inputs, _classes);
-  _switchMonitor = new SwitchMonitor(inputs, outputs, _classes);
-
 #ifdef TRACK_FLOWS
   for(int c = 0; c < _classes; ++c) {
     _stored_flits[c].resize(_inputs, 0);
@@ -182,17 +177,6 @@ IQRouter::IQRouter( Configuration const & config, Module *parent,
 
 IQRouter::~IQRouter( )
 {
-
-  if(gPrintActivity) {
-    cout << Name() << ".bufferMonitor:" << endl ; 
-    cout << *_bufferMonitor << endl ;
-    
-    cout << Name() << ".switchMonitor:" << endl ; 
-    cout << "Inputs=" << _inputs ;
-    cout << "Outputs=" << _outputs ;
-    cout << *_switchMonitor << endl ;
-  }
-
   for(int i = 0; i < _inputs; ++i)
     delete _buf[i];
   
@@ -204,8 +188,6 @@ IQRouter::~IQRouter( )
   if(_spec_sw_allocator)
     delete _spec_sw_allocator;
 
-  delete _bufferMonitor;
-  delete _switchMonitor;
 }
   
 void IQRouter::AddOutputChannel(FlitChannel * channel, CreditChannel * backchannel)
@@ -278,8 +260,6 @@ void IQRouter::_InternalStep( )
 
   _OutputQueuing( );
 
-  _bufferMonitor->cycle( );
-  _switchMonitor->cycle( );
 }
 
 void IQRouter::WriteOutputs( )
@@ -373,8 +353,6 @@ void IQRouter::_InputQueuing( )
     ++_stored_flits[f->cl][input];
     if(f->head) ++_active_packets[f->cl][input];
 #endif
-
-    _bufferMonitor->write(input, f) ;
 
     if(cur_buf->GetState(vc) == VC::idle) {
       assert(cur_buf->FrontFlit(vc) == f);
@@ -1074,8 +1052,6 @@ void IQRouter::_SWHoldUpdate( )
       if(f->tail) --_active_packets[f->cl][input];
 #endif
 
-      _bufferMonitor->read(input, f) ;
-      
       f->hops++;
       f->vc = match_vc;
       
@@ -1984,8 +1960,6 @@ void IQRouter::_SWAllocUpdate( )
       if(f->tail) --_active_packets[f->cl][input];
 #endif
 
-      _bufferMonitor->read(input, f) ;
-
       f->hops++;
       f->vc = match_vc;
 
@@ -2193,8 +2167,6 @@ void IQRouter::_SwitchUpdate( )
 		 << "." << (expanded_output % _output_speedup)
 		 << "." << endl;
     }
-    _switchMonitor->traversal(input, output, f) ;
-
     if(f->watch) {
       *gWatchOut << GetSimTime() << " | " << FullName() << " | "
 		 << "Buffering flit " << f->id

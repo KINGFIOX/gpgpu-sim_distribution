@@ -68,32 +68,15 @@ public:
   inline int const & GetSinkPort() const {
     return _routerSinkPort;
   }
-  inline vector<int> const & GetActivity() const {
-    return _active;
-  }
-
-  // Send flit 
-  virtual void Send(Flit * flit);
-
   virtual void ReadInputs();
   virtual void WriteOutputs();
 
 private:
-  
-  ////////////////////////////////////////
-  //
-  // Power Models OBSOLETE
-  //
-  ////////////////////////////////////////
-
   Router const * _routerSource;
   int _routerSourcePort;
   Router const * _routerSink;
   int _routerSinkPort;
 
-  // Statistics for Activity Factors
-  vector<int> _active;
-  int _idle;
 };
 
 #endif

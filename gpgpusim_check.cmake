@@ -38,21 +38,6 @@ if(GPGPUSIM_CHECK_GIT_HASH)
   set(GPGPUSIM_CONFIG_GIT_HASH "unknown")
 endif()
 
-if(IS_DIRECTORY ${PROJECT_SOURCE_DIR}/src/accelwattch)
-  if(NOT EXISTS ${PROJECT_SOURCE_DIR}/src/accelwattch/gpgpu_sim.verify)
-    message(FATAL_ERROR
-      "gpgpu_sim.verify not found in ${PROJECT_SOURCE_DIR}/src/accelwattch")
-  endif()
-  set(GPGPUSIM_USE_POWER_MODEL ON)
-  set(GPGPUSIM_POWER_MODEL ${PROJECT_SOURCE_DIR}/src/accelwattch)
-elseif(DEFINED GPGPUSIM_POWER_MODEL)
-  if(NOT EXISTS ${GPGPUSIM_POWER_MODEL}/gpgpu_sim.verify)
-    message(FATAL_ERROR
-      "gpgpu_sim.verify not found in ${GPGPUSIM_POWER_MODEL}")
-  endif()
-  set(GPGPUSIM_USE_POWER_MODEL ON)
-endif()
-
 if(NOT CMAKE_BUILD_TYPE)
   set(CMAKE_BUILD_TYPE Release CACHE STRING "" FORCE)
 endif()

@@ -52,7 +52,6 @@
 #include "random_utils.hpp"
 #include "network.hpp"
 #include "injection.hpp"
-#include "power_module.hpp"
 #include "interconnect_interface.hpp"
 
 
@@ -66,7 +65,7 @@ InterconnectInterface *g_icnt_interface;
 
 /* the current traffic manager instance */
 TrafficManager * trafficManager = NULL;
-#if 0
+#ifndef CREATE_LIBRARY
 
 int GetSimTime() {
     return trafficManager->getTime();
@@ -95,9 +94,6 @@ Stats * GetStats(const std::string & name) {
 }
 
 #endif
-
-/* printing activity factor*/
-bool gPrintActivity;
 
 int gK;//radix
 int gN;//dimension
@@ -154,13 +150,6 @@ bool Simulate( BookSimConfig const & config )
   cout<<"Total run time "<<total_time<<endl;
 
   for (int i=0; i<subnets; ++i) {
-
-    ///Power analysis
-    if(config.GetInt("sim_power") > 0){
-      Power_Module pnet(net[i], config);
-      pnet.run();
-    }
-
     delete net[i];
   }
 
@@ -189,7 +178,6 @@ int main( int argc, char **argv )
    */
   InitializeRoutingMap( config );
 
-  gPrintActivity = (config.GetInt("print_activity") > 0);
   gTrace = (config.GetInt("viewer_trace") > 0);
   
   string watch_out_file = config.GetStr( "watch_out" );
@@ -208,4 +196,3 @@ int main( int argc, char **argv )
   return result ? -1 : 0;
 }
 #endif
-

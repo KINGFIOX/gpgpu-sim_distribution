@@ -96,11 +96,10 @@ class memory_partition_unit {
     return m_sub_partition[sub_partition_id];
   }
 
-  // Power model
-  void set_dram_power_stats(unsigned &n_cmd, unsigned &n_activity,
-                            unsigned &n_nop, unsigned &n_act, unsigned &n_pre,
-                            unsigned &n_rd, unsigned &n_wr, unsigned &n_wr_WB,
-                            unsigned &n_req) const;
+  void get_dram_stats(unsigned &n_cmd, unsigned &n_activity, unsigned &n_nop,
+                      unsigned &n_act, unsigned &n_pre, unsigned &n_rd,
+                      unsigned &n_wr, unsigned &n_wr_WB,
+                      unsigned &n_req) const;
 
   int global_sub_partition_id_to_local_id(int global_sub_partition_id) const;
 

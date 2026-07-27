@@ -61,30 +61,6 @@ enum _memory_space_t {
   instruction_space
 };
 
-#ifndef COEFF_STRUCT
-#define COEFF_STRUCT
-
-struct PowerscalingCoefficients {
-  double int_coeff;
-  double int_mul_coeff;
-  double int_mul24_coeff;
-  double int_mul32_coeff;
-  double int_div_coeff;
-  double fp_coeff;
-  double dp_coeff;
-  double fp_mul_coeff;
-  double fp_div_coeff;
-  double dp_mul_coeff;
-  double dp_div_coeff;
-  double sqrt_coeff;
-  double log_coeff;
-  double sin_coeff;
-  double exp_coeff;
-  double tensor_coeff;
-  double tex_coeff;
-};
-#endif
-
 enum FuncCache {
   FuncCachePreferNone = 0,
   FuncCachePreferShared = 1,
@@ -143,46 +119,6 @@ typedef enum uarch_bar_t barrier_type;
 
 enum uarch_red_t { NOT_RED = -1, POPC_RED = 1, AND_RED, OR_RED };
 typedef enum uarch_red_t reduction_type;
-
-enum uarch_operand_type_t { UN_OP = -1, INT_OP, FP_OP };
-typedef enum uarch_operand_type_t types_of_operands;
-
-enum special_operations_t {
-  OTHER_OP,
-  INT__OP,
-  INT_MUL24_OP,
-  INT_MUL32_OP,
-  INT_MUL_OP,
-  INT_DIV_OP,
-  FP_MUL_OP,
-  FP_DIV_OP,
-  FP__OP,
-  FP_SQRT_OP,
-  FP_LG_OP,
-  FP_SIN_OP,
-  FP_EXP_OP,
-  DP_MUL_OP,
-  DP_DIV_OP,
-  DP___OP,
-  TENSOR__OP,
-  TEX__OP
-};
-
-typedef enum special_operations_t
-    special_ops;  // Required to identify for the power model
-enum operation_pipeline_t {
-  UNKOWN_OP,
-  SP__OP,
-  DP__OP,
-  INTP__OP,
-  SFU__OP,
-  TENSOR_CORE__OP,
-  MEM__OP,
-  SPECIALIZED__OP,
-};
-typedef enum operation_pipeline_t operation_pipeline;
-enum mem_operation_t { NOT_TEX, TEX };
-typedef enum mem_operation_t mem_operation;
 
 enum _memory_op_t { no_memory_op = 0, memory_load, memory_store };
 
@@ -929,11 +865,6 @@ class inst_t {
     red_type = NOT_RED;
     bar_id = (unsigned)-1;
     bar_count = (unsigned)-1;
-    oprnd_type = UN_OP;
-    sp_op = OTHER_OP;
-    op_pipe = UNKOWN_OP;
-    mem_op = NOT_TEX;
-    const_cache_operand = 0;
     num_operands = 0;
     num_regs = 0;
     memset(out, 0, sizeof(unsigned));
@@ -963,23 +894,6 @@ class inst_t {
             memory_op == memory_store);
   }
 
-  bool is_fp() const { return ((sp_op == FP__OP)); }  // VIJAY
-  bool is_fpdiv() const { return ((sp_op == FP_DIV_OP)); }
-  bool is_fpmul() const { return ((sp_op == FP_MUL_OP)); }
-  bool is_dp() const { return ((sp_op == DP___OP)); }
-  bool is_dpdiv() const { return ((sp_op == DP_DIV_OP)); }
-  bool is_dpmul() const { return ((sp_op == DP_MUL_OP)); }
-  bool is_imul() const { return ((sp_op == INT_MUL_OP)); }
-  bool is_imul24() const { return ((sp_op == INT_MUL24_OP)); }
-  bool is_imul32() const { return ((sp_op == INT_MUL32_OP)); }
-  bool is_idiv() const { return ((sp_op == INT_DIV_OP)); }
-  bool is_sfu() const {
-    return ((sp_op == FP_SQRT_OP) || (sp_op == FP_LG_OP) ||
-            (sp_op == FP_SIN_OP) || (sp_op == FP_EXP_OP) ||
-            (sp_op == TENSOR__OP));
-  }
-  bool is_alu() const { return (sp_op == INT__OP); }
-
   unsigned get_num_operands() const { return num_operands; }
   unsigned get_num_regs() const { return num_regs; }
   void set_num_regs(unsigned num) { num_regs = num; }
@@ -996,14 +910,6 @@ class inst_t {
   unsigned bar_id;
   unsigned bar_count;
 
-  types_of_operands oprnd_type;  // code (uarch visible) identify if the
-                                 // operation is an interger or a floating point
-  special_ops
-      sp_op;  // code (uarch visible) identify if int_alu, fp_alu, int_mul ....
-  operation_pipeline op_pipe;  // code (uarch visible) identify the pipeline of
-                               // the operation (SP, SFU or MEM)
-  mem_operation mem_op;        // code (uarch visible) identify memory type
-  bool const_cache_operand;    // has a load from constant memory as an operand
   _memory_op_t memory_op;
   unsigned num_operands;
   unsigned num_regs;  // count vector operand as one register operand

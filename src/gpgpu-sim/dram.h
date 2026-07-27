@@ -135,10 +135,9 @@ class dram_t {
   class gpgpu_sim *m_gpu;
   unsigned int id;
 
-  // Power Model
-  void set_dram_power_stats(unsigned &cmd, unsigned &activity, unsigned &nop,
-                            unsigned &act, unsigned &pre, unsigned &rd,
-                            unsigned &wr, unsigned &wr_WB, unsigned &req) const;
+  void get_dram_stats(unsigned &cmd, unsigned &activity, unsigned &nop,
+                      unsigned &act, unsigned &pre, unsigned &rd, unsigned &wr,
+                      unsigned &wr_WB, unsigned &req) const;
 
   const memory_config *m_config;
 

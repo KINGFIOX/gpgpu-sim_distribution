@@ -70,6 +70,7 @@ supported surface.
 - OpenCL
 - CUDA/OpenGL interoperability
 - SST/Balar integration
+- AccelWattch, GPUWattch, and interconnect power/energy modeling
 - PTXPlus and the cuobjdump-to-PTXPlus converter
 - legacy CUDA texture-reference registration
 - non-Linux platforms and CUDA Toolkit versions other than 11.8

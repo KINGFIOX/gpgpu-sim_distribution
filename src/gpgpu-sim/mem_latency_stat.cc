@@ -82,9 +82,6 @@ memory_stats_t::memory_stats_t(unsigned n_shader,
   m_n_shader = n_shader;
   m_memory_config = mem_config;
   m_gpu = gpu;
-  total_n_access = 0;
-  total_n_reads = 0;
-  total_n_writes = 0;
   max_mrq_latency = 0;
   max_dq_latency = 0;
   max_mf_latency = 0;
