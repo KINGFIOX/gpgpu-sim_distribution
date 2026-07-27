@@ -118,9 +118,7 @@ unsigned symbol_table::get_sm_target() const {
     return m_parent->get_sm_target();
 }
 
-void symbol_table::set_ptx_version(float ver, unsigned ext) {
-  m_ptx_version = ptx_version(ver, ext);
-}
+void symbol_table::set_ptx_version(float ver) { m_ptx_version = ptx_version(ver); }
 
 void symbol_table::set_sm_target(const char *target, const char *ext,
                                  const char *ext2) {
@@ -226,8 +224,7 @@ symbol_table *symbol_table::end_inst_group() {
   return sym_table;
 }
 
-void register_ptx_function(const char *name,
-                           function_info *impl);  // either libcuda or libopencl
+void register_ptx_function(const char *name, function_info *impl);
 
 bool symbol_table::add_function_decl(const char *name, int entry_point,
                                      function_info **func_info,
@@ -368,14 +365,12 @@ void function_info::create_basic_blocks() {
         case BRA_OP:
         case RET_OP:
         case EXIT_OP:
-        case RETP_OP:
         case BREAK_OP:
           i++;
           if (i != m_instructions.end()) leaders.push_back(*i);
           i = find_next_real_instruction(i);
           break;
         case CALL_OP:
-        case CALLP_OP:
           if (pI->has_pred()) {
             printf("GPGPU-Sim PTX: Warning found predicated call\n");
             i++;
@@ -534,8 +529,7 @@ void function_info::connect_basic_blocks()  // iterate across m_basic_blocks of
     ptx_instruction *pI = (*bb_itr)->ptx_end;
     if ((*bb_itr)->is_exit)  // reached last basic block, no successors to link
       continue;
-    if (pI->get_opcode() == RETP_OP || pI->get_opcode() == RET_OP ||
-        pI->get_opcode() == EXIT_OP) {
+    if (pI->get_opcode() == RET_OP || pI->get_opcode() == EXIT_OP) {
       (*bb_itr)->successor_ids.insert(exit_bb->bb_id);
       exit_bb->predecessor_ids.insert((*bb_itr)->bb_id);
       if (pI->has_pred()) {
@@ -1421,9 +1415,6 @@ ptx_instruction::ptx_instruction(
       case WT_OPTION:
         m_cache_option = last_ptx_inst_option;
         break;
-      case HALF_OPTION:
-        m_inst_size = 4;  // bytes
-        break;
       case EXTP_OPTION:
         break;
       case NC_OPTION:
@@ -1458,9 +1449,7 @@ ptx_instruction::ptx_instruction(
        i != m_operands.end(); ++i) {
     const operand_info &op = *i;
     if (op.get_addr_space() != undefined_space)
-      m_space_spec =
-          op.get_addr_space();  // TODO: can have more than one memory space for
-                                // ptxplus (g8x) inst
+      m_space_spec = op.get_addr_space();
   }
   if (opcode == TEX_OP) m_space_spec = tex_space;
 

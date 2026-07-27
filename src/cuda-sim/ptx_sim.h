@@ -231,15 +231,13 @@ class ptx_version {
   ptx_version() {
     m_valid = false;
     m_ptx_version = 0;
-    m_ptx_extensions = 0;
     m_sm_version_valid = false;
     m_texmode_unified = true;
     m_map_f64_to_f32 = true;
   }
-  ptx_version(float ver, unsigned extensions) {
+  explicit ptx_version(float ver) {
     m_valid = true;
     m_ptx_version = ver;
-    m_ptx_extensions = extensions;
     m_sm_version_valid = false;
     m_texmode_unified = true;
   }
@@ -259,11 +257,6 @@ class ptx_version {
     assert(m_valid && m_sm_version_valid);
     return m_sm_version;
   }
-  unsigned extensions() const {
-    assert(m_valid);
-    return m_ptx_extensions;
-  }
-
  private:
   void check_target_extension(const char *ext) {
     if (ext) {
@@ -285,7 +278,6 @@ class ptx_version {
   bool m_texmode_unified;
   bool m_map_f64_to_f32;
   unsigned m_sm_version;
-  unsigned m_ptx_extensions;
 };
 
 class ptx_thread_info {
@@ -373,7 +365,6 @@ class ptx_thread_info {
     m_valid = true;
   }
   void set_tid(dim3 tid) { m_tid = tid; }
-  void cpy_tid_to_reg(dim3 tid);
   void set_ctaid(dim3 ctaid) { m_ctaid = ctaid; }
   void set_ntid(dim3 tid) { m_ntid = tid; }
   void set_nctaid(dim3 cta_size) { m_nctaid = cta_size; }
@@ -396,10 +387,6 @@ class ptx_thread_info {
   void callstack_push(unsigned npc, unsigned rpc, const symbol *return_var_src,
                       const symbol *return_var_dst, unsigned call_uid);
   bool callstack_pop();
-  void callstack_push_plus(unsigned npc, unsigned rpc,
-                           const symbol *return_var_src,
-                           const symbol *return_var_dst, unsigned call_uid);
-  bool callstack_pop_plus();
   void dump_callstack() const;
   std::string get_location() const;
   const ptx_instruction *get_inst() const;
@@ -468,7 +455,6 @@ class ptx_thread_info {
   memory_space_t m_last_memory_space;
   dram_callback_t m_last_dram_callback;
   memory_space *m_shared_mem;
-  memory_space *m_sstarr_mem;
   memory_space *m_local_mem;
   ptx_warp_info *m_warp_info;
   ptx_cta_info *m_cta_info;

@@ -162,7 +162,6 @@ ptx_thread_info::ptx_thread_info(kernel_info_t &kernel) : m_kernel(kernel) {
   m_last_memory_space = undefined_space;
   m_branch_taken = 0;
   m_shared_mem = NULL;
-  m_sstarr_mem = NULL;
   m_warp_info = NULL;
   m_cta_info = NULL;
   m_local_mem = NULL;
@@ -310,20 +309,6 @@ void ptx_thread_info::set_info(function_info *func) {
   m_PC = func->get_start_PC();
 }
 
-void ptx_thread_info::cpy_tid_to_reg(dim3 tid) {
-  // copies %tid.x, %tid.y and %tid.z into $r0
-  ptx_reg_t data;
-  data.s64 = 0;
-
-  data.u32 = (tid.x + (tid.y << 16) + (tid.z << 26));
-
-  const symbol *r0 = m_symbol_table->lookup("$r0");
-  if (r0) {
-    // No need to set pid if kernel doesn't use it
-    set_reg(r0, data);
-  }
-}
-
 void ptx_thread_info::print_insn(unsigned pc, FILE *fp) const {
   m_func_info->print_insn(pc, fp);
 }
@@ -420,23 +405,6 @@ void ptx_thread_info::callstack_push(unsigned pc, unsigned rpc,
   m_local_mem_stack_pointer += m_func_info->local_mem_framesize();
 }
 
-// ptxplus version of callstack_push.
-void ptx_thread_info::callstack_push_plus(unsigned pc, unsigned rpc,
-                                          const symbol *return_var_src,
-                                          const symbol *return_var_dst,
-                                          unsigned call_uid) {
-  m_RPC = -1;
-  m_RPC_updated = true;
-  m_last_was_call = true;
-  assert(m_func_info != NULL);
-  m_callstack.push_back(stack_entry(m_symbol_table, m_func_info, pc, rpc,
-                                    return_var_src, return_var_dst, call_uid));
-  // m_regs.push_back( reg_map_t() );
-  // m_debug_trace_regs_modified.push_back( reg_map_t() );
-  // m_debug_trace_regs_read.push_back( reg_map_t() );
-  m_local_mem_stack_pointer += m_func_info->local_mem_framesize();
-}
-
 bool ptx_thread_info::callstack_pop() {
   const symbol *rv_src = m_callstack.back().m_return_var_src;
   const symbol *rv_dst = m_callstack.back().m_return_var_dst;
@@ -464,41 +432,6 @@ bool ptx_thread_info::callstack_pop() {
   m_regs.pop_back();
   m_debug_trace_regs_modified.pop_back();
   m_debug_trace_regs_read.pop_back();
-
-  // write return value into caller frame
-  if (rv_dst != NULL) copy_buffer_to_frame(this, buffer);
-
-  return m_callstack.empty();
-}
-
-// ptxplus version of callstack_pop
-bool ptx_thread_info::callstack_pop_plus() {
-  const symbol *rv_src = m_callstack.back().m_return_var_src;
-  const symbol *rv_dst = m_callstack.back().m_return_var_dst;
-  assert(!((rv_src != NULL) ^
-           (rv_dst != NULL)));  // ensure caller and callee agree on whether
-                                // there is a return value
-
-  // read return value from callee frame
-  arg_buffer_t buffer(m_gpu->gpgpu_ctx);
-  if (rv_src != NULL)
-    buffer = copy_arg_to_buffer(this, operand_info(rv_src, m_gpu->gpgpu_ctx),
-                                rv_dst);
-
-  m_symbol_table = m_callstack.back().m_symbol_table;
-  m_NPC = m_callstack.back().m_PC;
-  m_RPC_updated = true;
-  m_last_was_call = false;
-  m_RPC = m_callstack.back().m_RPC;
-  m_func_info = m_callstack.back().m_func_info;
-  if (m_func_info) {
-    assert(m_local_mem_stack_pointer >= m_func_info->local_mem_framesize());
-    m_local_mem_stack_pointer -= m_func_info->local_mem_framesize();
-  }
-  m_callstack.pop_back();
-  // m_regs.pop_back();
-  // m_debug_trace_regs_modified.pop_back();
-  // m_debug_trace_regs_read.pop_back();
 
   // write return value into caller frame
   if (rv_dst != NULL) copy_buffer_to_frame(this, buffer);

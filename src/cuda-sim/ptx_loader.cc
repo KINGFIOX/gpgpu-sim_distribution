@@ -70,9 +70,6 @@ void gpgpu_context::ptx_reg_options(option_parser_t opp) {
                          "keep intermediate files created by GPGPU-Sim when "
                          "interfacing with external programs",
                          "0");
-  option_parser_register(opp, "-gpgpu_ptx_save_converted_ptxplus", OPT_BOOL,
-                         &(ptxinfo->m_ptx_save_converted_ptxplus),
-                         "Saved converted ptxplus to a file", "0");
   option_parser_register(opp, "-gpgpu_occupancy_sm_number", OPT_INT32,
                          &g_occupancy_sm_number,
                          "The SM number to pass to ptxas when getting register "
@@ -105,65 +102,6 @@ void gpgpu_context::print_ptx_file(const char *p, unsigned source_num,
   }
   free(s);
   fflush(stdout);
-}
-
-char *ptxinfo_data::gpgpu_ptx_sim_convert_ptx_and_sass_to_ptxplus(
-    const std::string ptxfilename, const std::string elffilename,
-    const std::string sassfilename) {
-  printf("GPGPU-Sim PTX: converting EMBEDDED .ptx file to ptxplus \n");
-
-  char fname_ptxplus[1024];
-  snprintf(fname_ptxplus, 1024, "_ptxplus_XXXXXX");
-  int fd4 = mkstemp(fname_ptxplus);
-  close(fd4);
-
-  // Run cuobjdump_to_ptxplus
-  char commandline[1024];
-  int result;
-  snprintf(commandline, 1024,
-           "$GPGPUSIM_ROOT/build/$GPGPUSIM_CONFIG/cuobjdump_to_ptxplus/"
-           "cuobjdump_to_ptxplus %s %s %s %s",
-           ptxfilename.c_str(), sassfilename.c_str(), elffilename.c_str(),
-           fname_ptxplus);
-  fflush(stdout);
-  printf("GPGPU-Sim PTX: calling cuobjdump_to_ptxplus\ncommandline: %s\n",
-         commandline);
-  result = system(commandline);
-  if (result) {
-    fprintf(stderr, "GPGPU-Sim PTX: ERROR ** could not execute %s\n",
-            commandline);
-    exit(1);
-  }
-
-  // Get ptxplus from file
-  std::ifstream fileStream(fname_ptxplus, std::ios::in);
-  std::string text, line;
-  while (getline(fileStream, line)) {
-    text += (line + "\n");
-  }
-  fileStream.close();
-
-  char *ptxplus_str = new char[strlen(text.c_str()) + 1];
-  strcpy(ptxplus_str, text.c_str());
-
-  if (!m_ptx_save_converted_ptxplus) {
-    char rm_commandline[1024];
-
-    snprintf(rm_commandline, 1024, "rm -f %s", fname_ptxplus);
-
-    printf("GPGPU-Sim PTX: removing temporary files using \"%s\"\n",
-           rm_commandline);
-    int rm_result = system(rm_commandline);
-    if (rm_result != 0) {
-      fprintf(stderr,
-              "GPGPU-Sim PTX: ERROR ** while removing temporary files %d\n",
-              rm_result);
-      exit(1);
-    }
-  }
-  printf("GPGPU-Sim PTX: DONE converting EMBEDDED .ptx file to ptxplus \n");
-
-  return ptxplus_str;
 }
 
 symbol_table *gpgpu_context::gpgpu_ptx_sim_load_ptx_from_string(
@@ -321,11 +259,6 @@ void fix_duplicate_errors(char fname2[1024]) {
 char *get_app_binary_name() {
   char exe_path[1025];
   char *self_exe_path = NULL;
-#ifdef __APPLE__
-  // AMRUTH:  get apple device and check the result.
-  printf("WARNING: not tested for Apple-mac devices \n");
-  abort();
-#else
   std::stringstream exec_link;
   exec_link << "/proc/self/exe";
   ssize_t path_length = readlink(exec_link.str().c_str(), exe_path, 1024);
@@ -337,7 +270,6 @@ char *get_app_binary_name() {
     self_exe_path = token;
     token = strtok(NULL, "/");
   }
-#endif
   self_exe_path = strtok(self_exe_path, ".");
   printf("self exe links to: %s\n", self_exe_path);
   return self_exe_path;
@@ -422,7 +354,6 @@ void gpgpu_context::gpgpu_ptxinfo_load_from_string(const char *p_for_info,
     char extra_flags[1024];
     extra_flags[0] = 0;
 
-#if CUDART_VERSION >= 3000
     if (g_occupancy_sm_number == 0) {
       fprintf(
           stderr,
@@ -438,10 +369,9 @@ void gpgpu_context::gpgpu_ptxinfo_load_from_string(const char *p_for_info,
     else
       snprintf(extra_flags, 1024, "--compile-only --gpu-name=sm_%u",
                g_occupancy_sm_number);
-#endif
 
     snprintf(commandline, 1024,
-             "$PTXAS_CUDA_INSTALL_PATH/bin/ptxas %s -v %s --output-file  "
+             "$CUDA_INSTALL_PATH/bin/ptxas %s -v %s --output-file  "
              "/dev/null 2> %s",
              extra_flags, fname2, tempfile_ptxinfo);
     printf("GPGPU-Sim PTX: generating ptxinfo using \"%s\"\n", commandline);
@@ -513,14 +443,12 @@ void gpgpu_context::gpgpu_ptxinfo_load_from_string(const char *p_for_info,
     char extra_flags[1024];
     extra_flags[0] = 0;
 
-#if CUDART_VERSION >= 3000
     if (sm_version == 0) sm_version = 20;
     if (!device_runtime->g_cdp_enabled)
       snprintf(extra_flags, 1024, "--gpu-name=sm_%u", sm_version);
     else
       snprintf(extra_flags, 1024, "--compile-only --gpu-name=sm_%u",
                sm_version);
-#endif
 
     snprintf(
         commandline, 1024,

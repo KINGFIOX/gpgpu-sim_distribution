@@ -235,7 +235,6 @@ class symbol {
 
   bool is_label() const { return m_is_label; }
   bool is_shared() const { return m_is_shared; }
-  bool is_sstarr() const { return m_is_sstarr; }
   bool is_const() const { return m_is_const; }
   bool is_global() const { return m_is_global; }
   bool is_local() const { return m_is_local; }
@@ -285,7 +284,6 @@ class symbol {
   bool m_address_valid;
   bool m_is_label;
   bool m_is_shared;
-  bool m_is_sstarr;
   bool m_is_const;
   bool m_is_global;
   bool m_is_local;
@@ -308,7 +306,7 @@ class symbol_table {
   void set_name(const char *name);
   const ptx_version &get_ptx_version() const;
   unsigned get_sm_target() const;
-  void set_ptx_version(float ver, unsigned ext);
+  void set_ptx_version(float ver);
   void set_sm_target(const char *target, const char *ext, const char *ext2);
   symbol *lookup(const char *identifier);
   symbol *lookup_by_addr(addr_t addr);
@@ -328,12 +326,10 @@ class symbol_table {
   void set_label_address(const symbol *label, unsigned addr);
   unsigned next_reg_num() { return ++m_reg_allocator; }
   addr_t get_shared_next() { return m_shared_next; }
-  addr_t get_sstarr_next() { return m_sstarr_next; }
   addr_t get_global_next() { return m_global_next; }
   addr_t get_local_next() { return m_local_next; }
   addr_t get_tex_next() { return m_tex_next; }
   void alloc_shared(unsigned num_bytes) { m_shared_next += num_bytes; }
-  void alloc_sstarr(unsigned num_bytes) { m_sstarr_next += num_bytes; }
   void alloc_global(unsigned num_bytes) { m_global_next += num_bytes; }
   void alloc_local(unsigned num_bytes) { m_local_next += num_bytes; }
   void alloc_tex(unsigned num_bytes) { m_tex_next += num_bytes; }
@@ -358,7 +354,6 @@ class symbol_table {
  private:
   unsigned m_reg_allocator;
   unsigned m_shared_next;
-  unsigned m_sstarr_next;
   unsigned m_const_next;
   unsigned m_global_next;
   unsigned m_local_next;
@@ -774,9 +769,7 @@ class operand_info {
   // Memory operand used in ld / st instructions (ex. [__var1])
   bool is_memory_operand() const { return m_type == memory_t; }
 
-  // Memory operand with immediate access (ex. s[0x0004] or g[$r1+=0x0004])
-  // This is used by the PTXPlus extension. The operand is assigned an address
-  // space during parsing.
+  // Memory operand carrying an explicit address-space annotation.
   bool is_memory_operand2() const { return (m_addr_space != undefined_space); }
 
   bool is_immediate_address() const { return m_immediate_address; }
@@ -791,7 +784,6 @@ class operand_info {
     }
     return m_value.m_symbolic->is_shared();
   }
-  bool is_sstarr() const { return m_value.m_symbolic->is_sstarr(); }
   bool is_const() const { return m_value.m_symbolic->is_const(); }
   bool is_global() const { return m_value.m_symbolic->is_global(); }
   bool is_local() const { return m_value.m_symbolic->is_local(); }
@@ -1102,26 +1094,10 @@ class ptx_instruction : public warp_inst_t {
     if (m_opcode == LD_OP || m_opcode == LDU_OP || m_opcode == TEX_OP ||
         m_opcode == MMA_LD_OP)
       return true;
-    // Check PTXPlus operand type below
-    // Source operands are memory operands
-    ptx_instruction::const_iterator op = op_iter_begin();
-    for (int n = 0; op != op_iter_end(); op++, n++) {  // process operands
-      if (n > 0 && op->is_memory_operand2())           // source operands only
-        return true;
-    }
     return false;
   }
   bool has_memory_write() const {
-    if (m_opcode == ST_OP || m_opcode == MMA_ST_OP) return true;
-    // Check PTXPlus operand type below
-    // Destination operand is a memory operand
-    ptx_instruction::const_iterator op = op_iter_begin();
-    for (int n = 0; (op != op_iter_end() && n < 1);
-         op++, n++) {                          // process operands
-      if (n == 0 && op->is_memory_operand2())  // source operands only
-        return true;
-    }
-    return false;
+    return m_opcode == ST_OP || m_opcode == MMA_ST_OP;
   }
 
  private:
@@ -1340,7 +1316,6 @@ class function_info {
   addr_t get_start_PC() const { return m_start_PC; }
 
   void finalize(memory_space *param_mem);
-  void param_to_shared(memory_space *shared_mem, symbol_table *symtab);
   void list_param(FILE *fout) const;
   void ptx_jit_config(std::map<unsigned long long, size_t> mallocPtr_Size,
                       memory_space *param_mem, gpgpu_t *gpu, dim3 gridDim,

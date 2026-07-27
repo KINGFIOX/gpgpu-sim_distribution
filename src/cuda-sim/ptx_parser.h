@@ -143,7 +143,6 @@ class ptx_recognizer {
   void add_literal_float(float value);
   void add_literal_double(double value);
   void add_address_operand(const char *identifier, int offset);
-  void add_address_operand2(int offset);
   void add_label(const char *idenfiier);
   void add_vector_spec(int spec);
   void add_space_spec(enum _memory_space_t spec, int value);
@@ -154,7 +153,7 @@ class ptx_recognizer {
   void add_alignment_spec(int spec);
   void add_array_initializer();
   void add_file(unsigned num, const char *filename);
-  void add_version_info(float ver, unsigned ext);
+  void add_version_info(float ver);
   void *reset_symtab();
   void set_symtab(void *);
   void add_pragma(const char *str);
@@ -167,7 +166,6 @@ class ptx_recognizer {
   void target_header2(char *a, char *b);
   void target_header3(char *a, char *b, char *c);
   void add_double_operand(const char *d1, const char *d2);
-  void change_memory_addr_space(const char *identifier);
   void change_operand_lohi(int lohi);
   void change_double_operand_type(int addr_type);
   void change_operand_neg();

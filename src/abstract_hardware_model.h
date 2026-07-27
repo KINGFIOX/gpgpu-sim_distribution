@@ -50,7 +50,6 @@ enum _memory_space_t {
   reg_space,
   local_space,
   shared_space,
-  sstarr_space,
   param_space_unclassified,
   param_space_kernel, /* global to all threads in a kernel : read-only */
   param_space_local,  /* local to a thread : read-writable */
@@ -544,10 +543,6 @@ class gpgpu_functional_sim_config {
   unsigned get_forced_max_capability() const {
     return m_ptx_force_max_capability;
   }
-  bool convert_to_ptxplus() const { return m_ptx_convert_to_ptxplus; }
-  bool use_cuobjdump() const { return m_ptx_use_cuobjdump; }
-  bool experimental_lib_support() const { return m_experimental_lib_support; }
-
   int get_ptx_inst_debug_to_file() const { return g_ptx_inst_debug_to_file; }
   const char *get_ptx_inst_debug_file() const { return g_ptx_inst_debug_file; }
   int get_ptx_inst_debug_thread_uid() const {
@@ -565,9 +560,6 @@ class gpgpu_functional_sim_config {
 
  private:
   // PTX options
-  int m_ptx_convert_to_ptxplus;
-  int m_ptx_use_cuobjdump;
-  int m_experimental_lib_support;
   unsigned m_ptx_force_max_capability;
   int checkpoint_option;
   int checkpoint_kernel;
@@ -619,14 +611,6 @@ class gpgpu_t {
     return m_surf_mem;
   }
 
-  void gpgpu_ptx_sim_bindTextureToArray(const struct textureReference *texref,
-                                        const struct cudaArray *array);
-  void gpgpu_ptx_sim_bindNameToTexture(const char *name,
-                                       const struct textureReference *texref,
-                                       int dim, int readmode, int ext);
-  void gpgpu_ptx_sim_unbindTexture(const struct textureReference *texref);
-  const char *gpgpu_ptx_sim_findNamefromTexture(
-      const struct textureReference *texref);
 
   const struct textureReference *get_texref(const std::string &texname) const {
     std::map<std::string,
@@ -1020,7 +1004,7 @@ class inst_t {
                                // the operation (SP, SFU or MEM)
   mem_operation mem_op;        // code (uarch visible) identify memory type
   bool const_cache_operand;    // has a load from constant memory as an operand
-  _memory_op_t memory_op;      // memory_op used by ptxplus
+  _memory_op_t memory_op;
   unsigned num_operands;
   unsigned num_regs;  // count vector operand as one register operand
 

@@ -4,7 +4,6 @@
 #include <iostream>
 #include <map>
 
-#if (CUDART_VERSION >= 5000)
 #define __CUDA_RUNTIME_API_H__
 
 #include <builtin_types.h>
@@ -324,4 +323,3 @@ void cuda_device_runtime::launch_all_device_kernels() {
     launch_one_device_kernel();
   }
 }
-#endif

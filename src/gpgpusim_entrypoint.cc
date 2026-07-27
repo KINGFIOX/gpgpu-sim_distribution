@@ -43,21 +43,6 @@
 static int sg_argc = 3;
 static const char *sg_argv[] = {"", "-config", "gpgpusim.config"};
 
-// Help funcs to avoid multiple '->' for SST
-GPGPUsim_ctx *GPGPUsim_ctx_ptr() { return GPGPU_Context()->the_gpgpusim; }
-
-class sst_gpgpu_sim *g_the_gpu() {
-  return static_cast<sst_gpgpu_sim *>(GPGPUsim_ctx_ptr()->g_the_gpu);
-}
-
-class stream_manager *g_stream_manager() {
-  return GPGPUsim_ctx_ptr()->g_stream_manager;
-}
-
-// SST callback
-extern void SST_callback_cudaThreadSynchronize_done();
-__attribute__((weak)) void SST_callback_cudaThreadSynchronize_done() {}
-
 void *gpgpu_sim_thread_sequential(void *ctx_ptr) {
   gpgpu_context *ctx = (gpgpu_context *)ctx_ptr;
   // at most one kernel running at a time
@@ -184,75 +169,6 @@ void *gpgpu_sim_thread_concurrent(void *ctx_ptr) {
   return NULL;
 }
 
-bool sst_sim_cycles = false;
-
-bool SST_Cycle() {
-  // Check if Synchronize is done when SST previously requested
-  // cudaThreadSynchronize
-  if (GPGPU_Context()->requested_synchronize &&
-      ((g_stream_manager()->empty() && !GPGPUsim_ctx_ptr()->g_sim_active) ||
-       GPGPUsim_ctx_ptr()->g_sim_done)) {
-    SST_callback_cudaThreadSynchronize_done();
-    GPGPU_Context()->requested_synchronize = false;
-  }
-
-  if (g_stream_manager()->empty_protected() &&
-      !GPGPUsim_ctx_ptr()->g_sim_done && !g_the_gpu()->active()) {
-    GPGPUsim_ctx_ptr()->g_sim_active = false;
-    // printf("stream is empty %d \n",  g_stream_manager->empty());
-    return false;
-  }
-
-  if (g_stream_manager()->operation(&sst_sim_cycles) &&
-      !g_the_gpu()->active()) {
-    if (sst_sim_cycles) {
-      sst_sim_cycles = false;
-    }
-    return false;
-  }
-
-  // printf("GPGPU-Sim: Give GPU Cycle\n");
-  GPGPUsim_ctx_ptr()->g_sim_active = true;
-
-  // functional simulation
-  if (g_the_gpu()->is_functional_sim()) {
-    kernel_info_t *kernel = g_the_gpu()->get_functional_kernel();
-    assert(kernel);
-    GPGPUsim_ctx_ptr()->gpgpu_ctx->func_sim->gpgpu_cuda_ptx_sim_main_func(
-        *kernel);
-    g_the_gpu()->finish_functional_sim(kernel);
-  }
-
-  // performance simulation
-  if (g_the_gpu()->active()) {
-    g_the_gpu()->SST_cycle();
-    sst_sim_cycles = true;
-    g_the_gpu()->deadlock_check();
-  } else {
-    if (g_the_gpu()->cycle_insn_cta_max_hit()) {
-      g_stream_manager()->stop_all_running_kernels();
-      GPGPUsim_ctx_ptr()->g_sim_done = true;
-      GPGPUsim_ctx_ptr()->g_sim_active = false;
-      GPGPUsim_ctx_ptr()->break_limit = true;
-    }
-  }
-
-  if (!g_the_gpu()->active()) {
-    g_the_gpu()->print_stats(GPGPUsim_ctx_ptr()->g_the_gpu->last_streamID);
-    g_the_gpu()->update_stats();
-    GPGPU_Context()->print_simulation_time();
-  }
-
-  if (GPGPUsim_ctx_ptr()->break_limit) {
-    printf(
-        "GPGPU-Sim: ** break due to reaching the maximum cycles (or "
-        "instructions) **\n");
-    return true;
-  }
-
-  return false;
-}
-
 void gpgpu_context::synchronize() {
   printf("GPGPU-Sim: synchronize waiting for inactive GPU simulation\n");
   the_gpgpusim->g_stream_manager->print(stdout);
@@ -269,27 +185,6 @@ void gpgpu_context::synchronize() {
   printf("GPGPU-Sim: detected inactive GPU simulation thread\n");
   fflush(stdout);
   //    sem_post(&g_sim_signal_start);
-}
-
-bool gpgpu_context::synchronize_check() {
-  // printf("GPGPU-Sim: synchronize checking for inactive GPU simulation\n");
-  requested_synchronize = true;
-  the_gpgpusim->g_stream_manager->print(stdout);
-  fflush(stdout);
-  //    sem_wait(&g_sim_signal_finish);
-  bool done = false;
-  pthread_mutex_lock(&(the_gpgpusim->g_sim_lock));
-  done = (the_gpgpusim->g_stream_manager->empty() &&
-          !the_gpgpusim->g_sim_active) ||
-         the_gpgpusim->g_sim_done;
-  pthread_mutex_unlock(&(the_gpgpusim->g_sim_lock));
-  if (done) {
-    printf(
-        "GPGPU-Sim: synchronize checking: detected inactive GPU simulation "
-        "thread\n");
-  }
-  fflush(stdout);
-  return done;
 }
 
 void gpgpu_context::exit_simulation() {
@@ -325,14 +220,8 @@ gpgpu_sim *gpgpu_context::gpgpu_ptx_sim_init_perf() {
   assert(setlocale(LC_NUMERIC, "C"));
   the_gpgpusim->g_the_gpu_config->init();
 
-  if (the_gpgpusim->g_the_gpu_config->is_SST_mode()) {
-    // Create SST specific GPGPUSim
-    the_gpgpusim->g_the_gpu =
-        new sst_gpgpu_sim(*(the_gpgpusim->g_the_gpu_config), this);
-  } else {
-    the_gpgpusim->g_the_gpu =
-        new exec_gpgpu_sim(*(the_gpgpusim->g_the_gpu_config), this);
-  }
+  the_gpgpusim->g_the_gpu =
+      new exec_gpgpu_sim(*(the_gpgpusim->g_the_gpu_config), this);
   the_gpgpusim->g_stream_manager = new stream_manager(
       (the_gpgpusim->g_the_gpu), func_sim->g_cuda_launch_blocking);
 
@@ -348,17 +237,12 @@ gpgpu_sim *gpgpu_context::gpgpu_ptx_sim_init_perf() {
 void gpgpu_context::start_sim_thread(int api) {
   if (the_gpgpusim->g_sim_done) {
     the_gpgpusim->g_sim_done = false;
-    if (the_gpgpusim->g_the_gpu_config->is_SST_mode()) {
-      // Do not create concurrent thread in SST mode
-      g_the_gpu()->init();
+    if (api == 1) {
+      pthread_create(&(the_gpgpusim->g_simulation_thread), NULL,
+                     gpgpu_sim_thread_concurrent, (void *)this);
     } else {
-      if (api == 1) {
-        pthread_create(&(the_gpgpusim->g_simulation_thread), NULL,
-                       gpgpu_sim_thread_concurrent, (void *)this);
-      } else {
-        pthread_create(&(the_gpgpusim->g_simulation_thread), NULL,
-                       gpgpu_sim_thread_sequential, (void *)this);
-      }
+      pthread_create(&(the_gpgpusim->g_simulation_thread), NULL,
+                     gpgpu_sim_thread_sequential, (void *)this);
     }
   }
 }
@@ -390,25 +274,4 @@ void gpgpu_context::print_simulation_time() {
            the_gpgpusim->g_the_gpu->shader_clock() * 1000 / cycles_per_sec);
   }
   fflush(stdout);
-}
-
-int gpgpu_context::gpgpu_opencl_ptx_sim_main_perf(kernel_info_t *grid) {
-  the_gpgpusim->g_the_gpu->launch(grid);
-  sem_post(&(the_gpgpusim->g_sim_signal_start));
-  sem_wait(&(the_gpgpusim->g_sim_signal_finish));
-  return 0;
-}
-
-//! Functional simulation of OpenCL
-/*!
- * This function call the CUDA PTX functional simulator
- */
-int cuda_sim::gpgpu_opencl_ptx_sim_main_func(kernel_info_t *grid) {
-  // calling the CUDA PTX simulator, sending the kernel by reference and a flag
-  // set to true, the flag used by the function to distinguish OpenCL calls from
-  // the CUDA simulation calls which it is needed by the called function to not
-  // register the exit the exit of OpenCL kernel as it doesn't register entering
-  // in the first place as the CUDA kernels does
-  gpgpu_cuda_ptx_sim_main_func(*grid, true);
-  return 0;
 }

@@ -65,7 +65,6 @@ int ptx_error( yyscan_t yyscanner, ptx_recognizer* recognizer, const char *s );
 
 abs	TC; yylval->int_value = ABS_OP; return OPCODE;
 add	TC; yylval->int_value = ADD_OP; return OPCODE;
-addp	TC; yylval->int_value = ADDP_OP; return OPCODE;
 addc    TC; yylval->int_value = ADDC_OP; return OPCODE;
 and	TC; yylval->int_value = AND_OP; return OPCODE;
 andn	TC; yylval->int_value = ANDN_OP; return OPCODE;
@@ -86,7 +85,6 @@ wmma\.load	TC; yylval->int_value = MMA_LD_OP; return OPCODE;
 wmma\.store 	TC; yylval->int_value = MMA_ST_OP; return OPCODE;
 
 call	TC; BEGIN(NOT_OPCODE); yylval->int_value = CALL_OP; return OPCODE; // blocking opcode token in case the callee has the same name as an opcode
-callp   TC; BEGIN(NOT_OPCODE); yylval->int_value = CALLP_OP; return OPCODE;
 clz	TC; yylval->int_value = CLZ_OP; return OPCODE;
 cnot	TC; yylval->int_value = CNOT_OP; return OPCODE;
 cos	TC; yylval->int_value = COS_OP; return OPCODE;
@@ -105,7 +103,6 @@ lg2	TC; yylval->int_value = LG2_OP; return OPCODE;
 mad24   TC; yylval->int_value = MAD24_OP; return OPCODE;
 mad     TC; yylval->int_value = MAD_OP; return OPCODE;
 madc	TC; yylval->int_value = MADC_OP; return OPCODE;
-madp	TC; yylval->int_value = MADP_OP; return OPCODE;
 max     TC; yylval->int_value = MAX_OP; return OPCODE;
 membar  TC; yylval->int_value = MEMBAR_OP; return OPCODE;
 min     TC; yylval->int_value = MIN_OP; return OPCODE;
@@ -127,7 +124,6 @@ rcp	TC; yylval->int_value = RCP_OP; return OPCODE;
 red     TC; yylval->int_value = RED_OP; return OPCODE;
 rem	TC; yylval->int_value = REM_OP; return OPCODE;
 ret	TC; yylval->int_value = RET_OP; return OPCODE;
-retp     TC; yylval->int_value = RETP_OP; return OPCODE;
 rsqrt	TC; yylval->int_value = RSQRT_OP; return OPCODE;
 sad     TC; yylval->int_value = SAD_OP; return OPCODE;
 selp	TC; yylval->int_value = SELP_OP; return OPCODE;
@@ -140,7 +136,6 @@ shr     TC; yylval->int_value = SHR_OP; return OPCODE;
 sin	TC; yylval->int_value = SIN_OP; return OPCODE;
 slct	TC; yylval->int_value = SLCT_OP; return OPCODE;
 sqrt	TC; yylval->int_value = SQRT_OP; return OPCODE;
-sst	TC; yylval->int_value = SST_OP; return OPCODE;
 ssy     TC; yylval->int_value = SSY_OP; return OPCODE;
 st      TC; yylval->int_value = ST_OP; return OPCODE;
 st.volatile TC; yylval->int_value = ST_OP; return OPCODE;
@@ -202,7 +197,6 @@ breakaddr  TC; yylval->int_value = BREAKADDR_OP; return OPCODE;
 \.align TC; return ALIGN_DIRECTIVE;
 \.branchtargets TC; return BRANCHTARGETS_DIRECTIVE;
 \.byte	TC; return BYTE_DIRECTIVE; /* not in PTX 2.1 */
-\.callprototype TC; return CALLPROTOTYPE_DIRECTIVE;
 \.calltargets TC; return CALLTARGETS_DIRECTIVE;
 \.const\[[0-9]+\] TC; yylval->int_value = atoi(yytext+7); return CONST_DIRECTIVE;
 \.const TC; yylval->int_value = 0; return CONST_DIRECTIVE;
@@ -225,7 +219,6 @@ breakaddr  TC; yylval->int_value = BREAKADDR_OP; return OPCODE;
 \.section TC; return SECTION_DIRECTIVE;
 \.shared  TC; return SHARED_DIRECTIVE;
 \.sreg   TC; return SREG_DIRECTIVE;
-\.sstarr TC; return SSTARR_DIRECTIVE;
 \.struct TC; return STRUCT_DIRECTIVE;
 \.surf   TC; return SURF_DIRECTIVE;   /* not in PTX 2.1 */
 \.target  TC; return TARGET_DIRECTIVE;
@@ -238,7 +231,7 @@ breakaddr  TC; yylval->int_value = BREAKADDR_OP; return OPCODE;
 \.weak	TC; return WEAK_DIRECTIVE;
 
 \.constptr TC; return CONSTPTR_DIRECTIVE; /* Ptx plus directive for pointer to constant memory */
-\.ptr TC; return PTR_DIRECTIVE; /* Added for new OpenCL genrated code */
+\.ptr TC; return PTR_DIRECTIVE;
 
 "%clock" TC; yylval->int_value = CLOCK_REG; return SPECIAL_REGISTER;
 "%halfclock" TC; yylval->int_value = HALFCLOCK_ID; return SPECIAL_REGISTER;
@@ -304,7 +297,6 @@ breakaddr  TC; yylval->int_value = BREAKADDR_OP; return OPCODE;
 \.v3	TC; return V3_TYPE;
 \.v4	TC; return V4_TYPE;
 
-\.half  TC; return HALF_OPTION; /* ptxplus */
 \.cc	TC; return EXTP_OPTION; /* extended precision option */
 
 \.equ	TC; return EQU_OPTION;

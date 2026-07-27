@@ -121,20 +121,6 @@ void move_warp(warp_inst_t *&dst, warp_inst_t *&src) {
 }
 
 void gpgpu_functional_sim_config::reg_options(class OptionParser *opp) {
-  option_parser_register(opp, "-gpgpu_ptx_use_cuobjdump", OPT_BOOL,
-                         &m_ptx_use_cuobjdump,
-                         "Use cuobjdump to extract ptx and sass from binaries",
-#if (CUDART_VERSION >= 4000)
-                         "1"
-#else
-                         "0"
-#endif
-  );
-  option_parser_register(opp, "-gpgpu_experimental_lib_support", OPT_BOOL,
-                         &m_experimental_lib_support,
-                         "Try to extract code from cuda libraries [Broken "
-                         "because of unknown cudaGetExportTable]",
-                         "0");
   option_parser_register(opp, "-checkpoint_option", OPT_INT32,
                          &checkpoint_option,
                          " checkpointing flag (0 = no checkpoint)", "0");
@@ -155,9 +141,6 @@ void gpgpu_functional_sim_config::reg_options(class OptionParser *opp) {
   option_parser_register(opp, "-checkpoint_insn_Y", OPT_INT32,
                          &checkpoint_insn_Y, " resume from which CTA ", "0");
 
-  option_parser_register(
-      opp, "-gpgpu_ptx_convert_to_ptxplus", OPT_BOOL, &m_ptx_convert_to_ptxplus,
-      "Convert SASS (native ISA) to ptxplus and run ptxplus", "0");
   option_parser_register(opp, "-gpgpu_ptx_force_max_capability", OPT_UINT32,
                          &m_ptx_force_max_capability,
                          "Force maximum compute capability", "0");
@@ -317,8 +300,6 @@ void warp_inst_t::generate_mem_accesses() {
       break;
     case shared_space:
       break;
-    case sstarr_space:
-      break;
     default:
       assert(0);
       break;
@@ -328,8 +309,7 @@ void warp_inst_t::generate_mem_accesses() {
   new_addr_type cache_block_size = 0;  // in bytes
 
   switch (space.get_type()) {
-    case shared_space:
-    case sstarr_space: {
+    case shared_space: {
       unsigned subwarp_size = m_config->warp_size / m_config->mem_warp_parts;
       unsigned total_accesses = 0;
       for (unsigned subwarp = 0; subwarp < m_config->mem_warp_parts;

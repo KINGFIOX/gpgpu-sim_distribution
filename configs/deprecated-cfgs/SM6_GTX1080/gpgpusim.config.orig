@@ -13,8 +13,6 @@
 >>>>>>> 0e8d4f190940681601bdf7f95a5686baa0b6463b:configs/GeForceGTX1080Ti/gpgpusim.config
 
 # SASS execution (only supported with CUDA >= 4.0)
--gpgpu_ptx_convert_to_ptxplus 0
--gpgpu_ptx_save_converted_ptxplus 0
 
 # high level architecture configuration
 -gpgpu_n_clusters 28

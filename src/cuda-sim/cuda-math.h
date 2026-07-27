@@ -76,70 +76,6 @@ namespace cuda_math {
 #define __attribute__(a)  // to remove warnings inside math_functions.h
 #undef INT_MAX
 
-#if CUDART_VERSION < 3000
-// DEVICE_BUILTIN
-struct int4 {
-  int x, y, z, w;
-};
-struct uint4 {
-  unsigned int x, y, z, w;
-};
-struct float4 {
-  float x, y, z, w;
-};
-struct float2 {
-  float x, y;
-};
-
-// DEVICE_BUILTIN
-typedef struct int4 int4;
-typedef struct uint4 uint4;
-typedef struct float4 float4;
-typedef struct float2 float2;
-
-extern float rsqrtf(float);  // CUDA 2.3 beta
-
-#define CUDA_FLOAT_MATH_FUNCTIONS
-#include <device_types.h>
-#define __CUDA_INTERNAL_COMPILATION__
-#include <math_functions.h>
-#undef __CUDA_INTERNAL_COMPILATION__
-#undef __attribute__
-
-// float to integer conversion
-int float2int(float a, enum cudaRoundMode mode) {
-  return __internal_float2uint(a, mode);
-}
-
-// float to unsigned integer conversion
-unsigned int float2uint(float a, enum cudaRoundMode mode) {
-  return __internal_float2uint(a, mode);
-}
-
-float __ll2float_rz(long long int a) {
-  int orig_rnd_mode = fegetround();
-  fesetround(FE_TOWARDZERO);
-  float b = a;
-  fesetround(orig_rnd_mode);
-  return b;
-}
-float __ll2float_ru(long long int a) {
-  int orig_rnd_mode = fegetround();
-  fesetround(FE_UPWARD);
-  float b = a;
-  fesetround(orig_rnd_mode);
-  return b;
-}
-float __ll2float_rd(long long int a) {
-  int orig_rnd_mode = fegetround();
-  fesetround(FE_DOWNWARD);
-  float b = a;
-  fesetround(orig_rnd_mode);
-  return b;
-}
-
-#else
-
 #define CUDA_FLOAT_MATH_FUNCTIONS
 #define __CUDACC__
 
@@ -341,27 +277,12 @@ float __saturatef(float a) {
 // intrinsic for power
 float __powf(float a, float b) { return powf(a, b); }
 
-// math functions missing in Mac OSX GCC
-#ifdef __APPLE__
-int __signbitd(double d) {
-  unsigned long long int u = *((unsigned long long int*)&d);
-  return ((u & 0x8000000000000000ULL) != 0);
-}
-#endif
-
 #undef __CUDACC__
 #define __CUDA_INTERNAL_COMPILATION__
 #include <math_functions.h>
 #undef __CUDA_INTERNAL_COMPILATION__
 #undef __attribute__
 
-#endif
-
 }  // namespace cuda_math
-
-// math functions missing in Mac OSX GCC
-#ifdef __APPLE__
-int isnanf(float a) { return (std::isnan(a)); }
-#endif
 
 #endif

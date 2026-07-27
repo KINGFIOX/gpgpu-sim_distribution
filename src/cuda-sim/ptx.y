@@ -55,7 +55,6 @@ class ptx_recognizer;
 %token  ALIGN_DIRECTIVE
 %token  BRANCHTARGETS_DIRECTIVE
 %token  BYTE_DIRECTIVE
-%token  CALLPROTOTYPE_DIRECTIVE
 %token  CALLTARGETS_DIRECTIVE
 %token  <int_value> CONST_DIRECTIVE
 %token  CONSTPTR_DIRECTIVE
@@ -78,7 +77,6 @@ class ptx_recognizer;
 %token  SECTION_DIRECTIVE
 %token  SHARED_DIRECTIVE
 %token  SREG_DIRECTIVE
-%token	SSTARR_DIRECTIVE
 %token  STRUCT_DIRECTIVE
 %token  SURF_DIRECTIVE
 %token  TARGET_DIRECTIVE
@@ -119,7 +117,6 @@ class ptx_recognizer;
 %token  V4_TYPE
 %token  COMMA
 %token  PRED
-%token  HALF_OPTION
 %token  EXTP_OPTION
 %token  EQ_OPTION
 %token  NE_OPTION
@@ -302,7 +299,6 @@ ptr_align_spec: ALIGN_DIRECTIVE INT_OPERAND
 statement_block: LEFT_BRACE statement_list RIGHT_BRACE 
 
 statement_list: directive_statement { recognizer->add_directive(); }
-    | statement_list prototype_block {printf("Prototype statement detected. WARNING: this is not supported yet on GPGPU-SIM\n"); }
 	| instruction_statement { recognizer->add_instruction(); }
 	| statement_list directive_statement { recognizer->add_directive(); }
 	| statement_list instruction_statement { recognizer->add_instruction(); }
@@ -311,8 +307,7 @@ statement_list: directive_statement { recognizer->add_directive(); }
 	;
 
 directive_statement: variable_declaration SEMI_COLON
-	| VERSION_DIRECTIVE DOUBLE_OPERAND { recognizer->add_version_info($2, 0); }
-	| VERSION_DIRECTIVE DOUBLE_OPERAND PLUS { recognizer->add_version_info($2,1); }
+	| VERSION_DIRECTIVE DOUBLE_OPERAND { recognizer->add_version_info($2); }
 	| ADDRESS_SIZE_DIRECTIVE INT_OPERAND {/*Do nothing*/}
 	| TARGET_DIRECTIVE IDENTIFIER COMMA IDENTIFIER { recognizer->target_header2($2,$4); }
 	| TARGET_DIRECTIVE IDENTIFIER COMMA IDENTIFIER COMMA IDENTIFIER { recognizer->target_header3($2,$4,$6); }
@@ -375,7 +370,6 @@ addressable_spec: CONST_DIRECTIVE {  recognizer->add_space_spec(const_space,$1);
 	| LOCAL_DIRECTIVE 	  {  recognizer->add_space_spec(local_space,0); }
 	| PARAM_DIRECTIVE 	  {  recognizer->add_space_spec(param_space_unclassified,0); }
 	| SHARED_DIRECTIVE 	  {  recognizer->add_space_spec(shared_space,0); }
-	| SSTARR_DIRECTIVE    {  recognizer->add_space_spec(sstarr_space,0); }
 	| SURF_DIRECTIVE 	  {  recognizer->add_space_spec(surf_space,0); }
 	| TEX_DIRECTIVE 	  {  recognizer->add_space_spec(tex_space,0); }
 	;
@@ -418,23 +412,6 @@ initializer_list: LEFT_BRACE literal_list RIGHT_BRACE { recognizer->add_array_in
 
 literal_list: literal_operand
 	| literal_list COMMA literal_operand;
-
-// TODO: This is currently hardcoded to handle and ignore one specific case
-// that all prototype statements follow in the PTX from Pytorch. As a
-// workaround, this parses and ignores both the prototype declaration 
-// and calling of the prototype (which conveniently comes right after the 
-// declaration for all cases.) This should be changed to handle both 
-// declaring the prototype, and actually calling it.
-prototype_block: prototype_decl prototype_call
-
-prototype_decl: IDENTIFIER COLON CALLPROTOTYPE_DIRECTIVE LEFT_PAREN prototype_param RIGHT_PAREN IDENTIFIER LEFT_PAREN prototype_param RIGHT_PAREN SEMI_COLON 
-	      
-prototype_call: OPCODE LEFT_PAREN IDENTIFIER RIGHT_PAREN COMMA operand COMMA LEFT_PAREN IDENTIFIER RIGHT_PAREN COMMA IDENTIFIER SEMI_COLON
-	      | OPCODE IDENTIFIER COMMA LEFT_PAREN IDENTIFIER RIGHT_PAREN COMMA IDENTIFIER SEMI_COLON
-
-prototype_param: /* empty */
-	       | PARAM_DIRECTIVE B64_TYPE IDENTIFIER
-	       | PARAM_DIRECTIVE B32_TYPE IDENTIFIER
 
 instruction_statement:  instruction SEMI_COLON
 	| IDENTIFIER COLON { recognizer->add_label($1); }
@@ -497,7 +474,6 @@ option: type_spec
 	| ABS_OPTION { recognizer->add_option(ABS_OPTION); }
 	| atomic_operation_spec ;
 	| TO_OPTION { recognizer->add_option(TO_OPTION); }
-	| HALF_OPTION { recognizer->add_option(HALF_OPTION); }
 	| EXTP_OPTION { recognizer->add_option(EXTP_OPTION); }
 	| CA_OPTION { recognizer->add_option(CA_OPTION); }
 	| CG_OPTION { recognizer->add_option(CG_OPTION); }
@@ -626,19 +602,7 @@ builtin_operand: SPECIAL_REGISTER DIMENSION_MODIFIER { recognizer->add_builtin_o
 	;
 
 memory_operand : LEFT_SQUARE_BRACKET address_expression RIGHT_SQUARE_BRACKET { recognizer->add_memory_operand(); }
-	| IDENTIFIER LEFT_SQUARE_BRACKET address_expression RIGHT_SQUARE_BRACKET { recognizer->add_memory_operand(); recognizer->change_memory_addr_space($1); }
-	| IDENTIFIER LEFT_SQUARE_BRACKET literal_operand RIGHT_SQUARE_BRACKET { recognizer->change_memory_addr_space($1); }
-	| IDENTIFIER LEFT_SQUARE_BRACKET twin_operand RIGHT_SQUARE_BRACKET { recognizer->change_memory_addr_space($1); recognizer->add_memory_operand();}
         | MINUS memory_operand { recognizer->change_operand_neg(); }
-	;
-
-twin_operand : IDENTIFIER PLUS IDENTIFIER { recognizer->add_double_operand($1,$3); recognizer->change_double_operand_type(1); }
-	| IDENTIFIER PLUS IDENTIFIER LO_OPTION { recognizer->add_double_operand($1,$3); recognizer->change_double_operand_type(1); recognizer->change_operand_lohi(1); }
-	| IDENTIFIER PLUS IDENTIFIER HI_OPTION { recognizer->add_double_operand($1,$3); recognizer->change_double_operand_type(1); recognizer->change_operand_lohi(2); }
-	| IDENTIFIER PLUS EQUALS IDENTIFIER  { recognizer->add_double_operand($1,$4); recognizer->change_double_operand_type(2); }
-	| IDENTIFIER PLUS EQUALS IDENTIFIER LO_OPTION { recognizer->add_double_operand($1,$4); recognizer->change_double_operand_type(2); recognizer->change_operand_lohi(1); }
-	| IDENTIFIER PLUS EQUALS IDENTIFIER HI_OPTION { recognizer->add_double_operand($1,$4); recognizer->change_double_operand_type(2); recognizer->change_operand_lohi(2); }
-	| IDENTIFIER PLUS EQUALS INT_OPERAND  { recognizer->add_address_operand($1,$4); recognizer->change_double_operand_type(3); }
 	;
 
 literal_operand : INT_OPERAND { recognizer->add_literal_int($1); }
@@ -650,7 +614,6 @@ address_expression: IDENTIFIER { recognizer->add_address_operand($1,0); }
 	| IDENTIFIER LO_OPTION { recognizer->add_address_operand($1,0); recognizer->change_operand_lohi(1);}
 	| IDENTIFIER HI_OPTION { recognizer->add_address_operand($1,0); recognizer->change_operand_lohi(2); }
 	| IDENTIFIER PLUS INT_OPERAND { recognizer->add_address_operand($1,$3); }
-	| INT_OPERAND { recognizer->add_address_operand2($1); }
 	;
 
 %%

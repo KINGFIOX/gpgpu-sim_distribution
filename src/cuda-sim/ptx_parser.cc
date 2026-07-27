@@ -243,8 +243,7 @@ void ptx_recognizer::parse_assert_impl(int test_value, const char *file,
 }
 
 void ptx_recognizer::set_return() {
-  parse_assert((g_opcode == CALL_OP || g_opcode == CALLP_OP),
-               "only call can have return value");
+  parse_assert(g_opcode == CALL_OP, "only call can have return value");
   g_operands.front().set_return();
   g_return_var = g_operands.front();
 }
@@ -397,18 +396,6 @@ void ptx_recognizer::add_identifier(const char *identifier, int array_dim,
       fflush(stdout);
       g_last_symbol->set_address(addr + addr_pad);
       g_current_symbol_table->alloc_shared(num_bits / 8 + addr_pad);
-      break;
-    case sstarr_space:
-      printf("GPGPU-Sim PTX: allocating sstarr region for \"%s\" ", identifier);
-      fflush(stdout);
-      assert((num_bits % 8) == 0);
-      addr = g_current_symbol_table->get_sstarr_next();
-      addr_pad = pad_address(addr, num_bits / 8, 128);
-      printf("from 0x%llx to 0x%llx (sstarr memory space)\n", addr + addr_pad,
-             addr + addr_pad + num_bits / 8);
-      fflush(stdout);
-      g_last_symbol->set_address(addr + addr_pad);
-      g_current_symbol_table->alloc_sstarr(num_bits / 8 + addr_pad);
       break;
     case const_space:
       if (array_ident == ARRAY_IDENTIFIER_NO_DIM) {
@@ -763,54 +750,6 @@ void ptx_recognizer::add_memory_operand() {
   g_operands.back().make_memory_operand();
 }
 
-/*TODO: add other memory locations*/
-void ptx_recognizer::change_memory_addr_space(const char *identifier) {
-  /*0 = N/A, not reading from memory
-   *1 = global memory
-   *2 = shared memory
-   *3 = const memory segment
-   *4 = local memory segment
-   */
-
-  bool recognizedType = false;
-
-  PTX_PARSE_DPRINTF("change_memory_addr_space");
-  assert(!g_operands.empty());
-  if (!strcmp(identifier, "g")) {
-    g_operands.back().set_addr_space(global_space);
-    recognizedType = true;
-  }
-  if (!strcmp(identifier, "s")) {
-    g_operands.back().set_addr_space(shared_space);
-    recognizedType = true;
-  }
-  // For constants, check if the first character is 'c'
-  char c[2];
-  strncpy(c, identifier, 1);
-  c[1] = '\0';
-  if (!strcmp(c, "c")) {
-    g_operands.back().set_addr_space(const_space);
-    parse_assert(g_current_symbol_table->lookup(identifier) != NULL,
-                 "Constant was not defined.");
-    g_operands.back().set_const_mem_offset(
-        g_current_symbol_table->lookup(identifier)->get_address());
-    recognizedType = true;
-  }
-  // For local memory, check if the first character is 'l'
-  char l[2];
-  strncpy(l, identifier, 1);
-  l[1] = '\0';
-  if (!strcmp(l, "l")) {
-    g_operands.back().set_addr_space(local_space);
-    // parse_assert(g_current_symbol_table->lookup(identifier) != NULL, "Local
-    // memory segment was not defined.");
-    // g_operands.back().set_const_mem_offset(g_current_symbol_table->lookup(identifier)->get_address());
-    recognizedType = true;
-  }
-
-  parse_assert(recognizedType, "Error: unrecognized memory type.");
-}
-
 void ptx_recognizer::change_operand_lohi(int lohi) {
   /*0 = N/A, read entire operand
    *1 = lo, reading from lowest bits
@@ -885,7 +824,7 @@ void ptx_recognizer::add_scalar_operand(const char *identifier) {
   PTX_PARSE_DPRINTF("add_scalar_operand");
   const symbol *s = g_current_symbol_table->lookup(identifier);
   if (s == NULL) {
-    if (g_opcode == BRA_OP || g_opcode == CALLP_OP) {
+    if (g_opcode == BRA_OP) {
       // forward branch target...
       s = g_current_symbol_table->add_variable(
           identifier, NULL, 0, gpgpu_ctx->g_filename, ptx_get_lineno(scanner));
@@ -921,17 +860,12 @@ void ptx_recognizer::add_address_operand(const char *identifier, int offset) {
   g_operands.push_back(operand_info(s, offset, gpgpu_ctx));
 }
 
-void ptx_recognizer::add_address_operand2(int offset) {
-  PTX_PARSE_DPRINTF("add_address_operand");
-  g_operands.push_back(operand_info((unsigned)offset, gpgpu_ctx));
-}
-
 void ptx_recognizer::add_array_initializer() {
   g_last_symbol->add_initializer(g_operands);
 }
 
-void ptx_recognizer::add_version_info(float ver, unsigned ext) {
-  g_global_symbol_table->set_ptx_version(ver, ext);
+void ptx_recognizer::add_version_info(float ver) {
+  g_global_symbol_table->set_ptx_version(ver);
 }
 
 void ptx_recognizer::add_file(unsigned num, const char *filename) {

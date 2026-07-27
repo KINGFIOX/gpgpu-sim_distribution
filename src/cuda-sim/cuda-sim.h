@@ -47,8 +47,6 @@ extern int g_debug_execution;
 
 extern void print_splash();
 
-extern void ptxinfo_opencl_addinfo(
-    std::map<std::string, function_info *> &kernels);
 unsigned ptx_sim_init_thread(kernel_info_t &kernel,
                              class ptx_thread_info **thread_info, int sid,
                              unsigned tid, unsigned threads_left,
@@ -179,14 +177,8 @@ class cuda_sim {
   class gpgpu_context *gpgpu_ctx;
   // global functions
   void ptx_opcocde_latency_options(option_parser_t opp);
-  void gpgpu_cuda_ptx_sim_main_func(kernel_info_t &kernel, bool openCL = false);
-  int gpgpu_opencl_ptx_sim_main_func(kernel_info_t *grid);
+  void gpgpu_cuda_ptx_sim_main_func(kernel_info_t &kernel);
   void init_inst_classification_stat();
-  kernel_info_t *gpgpu_opencl_ptx_sim_init_grid(class function_info *entry,
-                                                gpgpu_ptx_sim_arg_list_t args,
-                                                struct dim3 gridDim,
-                                                struct dim3 blockDim,
-                                                gpgpu_t *gpu);
   void gpgpu_ptx_sim_register_global_variable(void *hostVar,
                                               const char *deviceName,
                                               size_t size);
