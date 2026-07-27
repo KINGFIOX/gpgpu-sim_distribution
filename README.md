@@ -6,14 +6,30 @@ maintaining compatibility layers for multiple CUDA releases and integrations.
 
 ## Supported Environment
 
+- Recommended distribution: Ubuntu 22.04 LTS
+- Recommended host compiler: GCC/G++ 11.4.0
 - Linux on x86-64 or AArch64
 - CUDA Toolkit 11.8 (`nvcc` 11.8 and its CUDA headers/tools)
-- GCC/G++
 - CMake 3.18 or newer
 - CUDA C test targets linked to the simulator runtime
 
 CMake rejects non-Linux hosts, non-GCC host compilers, and CUDA Toolkit
 versions other than 11.8.
+
+## Install CUDA Toolkit 11.8
+
+On Ubuntu 22.04 for AArch64/SBSA, install CUDA Toolkit 11.8 from NVIDIA's
+package repository:
+
+```bash
+wget https://developer.download.nvidia.com/compute/cuda/repos/ubuntu2204/sbsa/cuda-keyring_1.1-1_all.deb
+sudo dpkg -i cuda-keyring_1.1-1_all.deb
+sudo apt update
+sudo apt install -y cuda-toolkit-11-8
+```
+
+The repository path in these commands is for SBSA systems. On x86-64, replace
+`sbsa` in the download URL with `x86_64`.
 
 ## Build And Test
 
@@ -94,12 +110,11 @@ sample sources are not modified.
 
 ## Libraries
 
-The build produces one implementation library with CUDA 11.8 ABI names for
-the in-tree tests and explicit CMake consumers:
+The build produces one unversioned implementation library for the in-tree
+tests and explicit CMake consumers:
 
-- `libcudart.so.11.0`
-- `libcuda.so.1` -> `libcudart.so.11.0`
-- `libcuda.so` -> `libcuda.so.1`
+- `libcudart.so`
+- `libcuda.so` -> `libcudart.so`
 
 The Runtime API covers device discovery, allocation, copies, kernel launch,
 streams, events, synchronization, and the CUDA registration hooks required by
