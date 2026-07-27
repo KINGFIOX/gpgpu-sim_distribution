@@ -21,6 +21,7 @@ execute_process(
   COMMAND_ERROR_IS_FATAL ANY)
 foreach(required
     cudaMalloc cudaMemcpy cudaLaunchKernel cudaDeviceSynchronize
+    cudaDeviceGetAttribute cudaDeviceCanAccessPeer
     cuInit cuDriverGetVersion cuDeviceGetCount cuMemAlloc_v2
     cuMemcpyHtoD_v2 cuMemcpyDtoH_v2 cuStreamCreate cuEventCreate)
   if(NOT symbols MATCHES " ${required}@@")

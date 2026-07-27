@@ -56,7 +56,7 @@ class gpgpu_context {
   void synchronize();
   void exit_simulation();
   void print_simulation_time();
-  void cuobjdumpParseBinary(unsigned int handle);
+  void load_fatbin_ptx(unsigned int handle);
   class symbol_table *gpgpu_ptx_sim_load_ptx_from_string(const char *p,
                                                          unsigned source_num);
   class symbol_table *gpgpu_ptx_sim_load_ptx_from_filename(

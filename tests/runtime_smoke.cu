@@ -21,6 +21,16 @@ void check(cudaError_t error, const char *operation) {
 }  // namespace
 
 int main() {
+  int compute_mode = -1;
+  check(cudaDeviceGetAttribute(&compute_mode, cudaDevAttrComputeMode, 0),
+        "cudaDeviceGetAttribute(compute mode)");
+  if (compute_mode != cudaComputeModeDefault) return EXIT_FAILURE;
+
+  int can_access_peer = -1;
+  check(cudaDeviceCanAccessPeer(&can_access_peer, 0, 0),
+        "cudaDeviceCanAccessPeer");
+  if (can_access_peer != 0) return EXIT_FAILURE;
+
   int left[kElementCount];
   int right[kElementCount];
   int result[kElementCount] = {};

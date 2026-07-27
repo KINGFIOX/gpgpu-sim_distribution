@@ -39,3 +39,7 @@ add_test(
     -DLIBRARY_DIR=$<TARGET_FILE_DIR:cudart>
     -DREADELF=${CMAKE_READELF}
     -P ${CMAKE_CURRENT_SOURCE_DIR}/symbol_audit.cmake)
+
+if(GPGPUSIM_ENABLE_CUDA_SAMPLES)
+  include(${CMAKE_CURRENT_SOURCE_DIR}/cuda_samples/CudaSamples.cmake)
+endif()

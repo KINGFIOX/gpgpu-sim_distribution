@@ -57,14 +57,14 @@ struct CUctx_st {
 
   _cuda_device_id *get_device() { return m_gpu; }
 
-  void add_binary(symbol_table *symtab, unsigned fat_cubin_handle) {
-    m_code[fat_cubin_handle] = symtab;
-    m_last_fat_cubin_handle = fat_cubin_handle;
+  void add_binary(symbol_table *symtab, unsigned fatbin_handle) {
+    m_code[fatbin_handle] = symtab;
+    m_last_fatbin_handle = fatbin_handle;
   }
 
   void add_ptxinfo(const char *deviceFun,
                    const struct gpgpu_ptx_sim_info &info) {
-    symbol *s = m_code[m_last_fat_cubin_handle]->lookup(deviceFun);
+    symbol *s = m_code[m_last_fatbin_handle]->lookup(deviceFun);
     assert(s != NULL);
     function_info *f = s->get_pc();
     assert(f != NULL);
@@ -75,10 +75,10 @@ struct CUctx_st {
     m_binary_info = info;
   }
 
-  void register_function(unsigned fat_cubin_handle, const char *hostFun,
+  void register_function(unsigned fatbin_handle, const char *hostFun,
                          const char *deviceFun) {
-    if (m_code.find(fat_cubin_handle) != m_code.end()) {
-      symbol *s = m_code[fat_cubin_handle]->lookup(deviceFun);
+    if (m_code.find(fatbin_handle) != m_code.end()) {
+      symbol *s = m_code[fatbin_handle]->lookup(deviceFun);
       if (s != NULL) {
         function_info *f = s->get_pc();
         assert(f != NULL);
@@ -113,7 +113,7 @@ struct CUctx_st {
   _cuda_device_id *m_gpu;  // selected gpu
   std::map<unsigned, symbol_table *>
       m_code;  // fat binary handle => global symbol table
-  unsigned m_last_fat_cubin_handle;
+  unsigned m_last_fatbin_handle;
   std::map<const void *, function_info *>
       m_kernel_lookup;  // unique id (CUDA app function address) => kernel entry
                         // point
@@ -178,11 +178,6 @@ class cuda_runtime_api {
   // member function list
 
   void cuobjdumpInit();
-  void extract_code_using_cuobjdump();
-  void extract_ptx_files_using_cuobjdump(CUctx_st *context);
-
-  void extract_code_using_cuobjdump_internal(
-      CUctx_st *context, std::string &app_binary);
   void extract_ptx_files_using_cuobjdump_internal(CUctx_st *context,
                                                   std::string &app_binary);
   void cuobjdumpRegisterFatBinary(unsigned int handle, const char *filename,

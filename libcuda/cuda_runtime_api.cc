@@ -250,13 +250,13 @@ typedef std::map<unsigned, CUevent_st *> event_tracker_t;
 int CUevent_st::m_next_event_uid;
 event_tracker_t g_timer_events;
 
-//! Return the executable file of the process containing the PTX/SASS code
+//! Return the executable file of the process containing the PTX code
 //!
 //! This Function returns the executable file ran by the process.  This
-//! executable is supposed to contain the PTX/SASS code.  It provides workaround
+//! executable is supposed to contain the PTX code.  It provides a workaround
 //! for processes running on valgrind by dereferencing /proc/<pid>/exe within
-//! the GPGPU-Sim process before calling cuobjdump to extract PTX/SASS.  This is
-//! needed because valgrind uses x86 emulation to detect memory leak.  Other
+//! the GPGPU-Sim process before calling cuobjdump to extract PTX.  This is
+//! needed because valgrind uses x86 emulation to detect memory leaks.  Other
 //! processes (e.g. cuobjdump) reading /proc/<pid>/exe will see the emulator
 //! executable instead of the application binary.
 //!
@@ -306,7 +306,7 @@ static int get_app_cuda_version() {
   return get_app_cuda_version_internal(app_binary);
 }
 
-//! Keep track of the association between filename and cubin handle
+//! Keep track of the association between filename and fatbin handle.
 void cuda_runtime_api::cuobjdumpRegisterFatBinary(unsigned int handle,
                                                   const char *filename,
                                                   CUctx_st *context) {
@@ -411,15 +411,15 @@ void **cudaRegisterFatBiaryInternal_impl(
 
   // Associate each registered fat binary with the sections extracted from the
   // application by the CUDA 11.8 cuobjdump tool.
-  unsigned long long fat_cubin_handle = next_fat_bin_handle++;
+  unsigned long long fatbin_handle = next_fat_bin_handle++;
   printf(
-      "GPGPU-Sim PTX: __cudaRegisterFatBinary, fat_cubin_handle = %llu, "
+      "GPGPU-Sim PTX: __cudaRegisterFatBinary, fatbin_handle = %llu, "
       "filename=%s\n",
-      fat_cubin_handle, filename);
-  assert(fat_cubin_handle >= 1);
-  if (fat_cubin_handle == 1) ctx_cuobjdumpInit_func(ctx);
-  ctx->api->cuobjdumpRegisterFatBinary(fat_cubin_handle, filename, context);
-  return (void **)fat_cubin_handle;
+      fatbin_handle, filename);
+  assert(fatbin_handle >= 1);
+  if (fatbin_handle == 1) ctx_cuobjdumpInit_func(ctx);
+  ctx->api->cuobjdumpRegisterFatBinary(fatbin_handle, filename, context);
+  return (void **)fatbin_handle;
 }
 
 void **cudaRegisterFatBinaryInternal(void *fatCubin,
@@ -448,13 +448,13 @@ void cudaRegisterFunctionInternal(void **fatCubinHandle, const char *hostFun,
     announce_call(__my_func__);
   }
   CUctx_st *context = GPGPUSim_Context(ctx);
-  unsigned fat_cubin_handle = (unsigned)(unsigned long long)fatCubinHandle;
+  unsigned fatbin_handle = (unsigned)(unsigned long long)fatCubinHandle;
   printf(
       "GPGPU-Sim PTX: __cudaRegisterFunction %s : hostFun 0x%p, "
-      "fat_cubin_handle = %u\n",
-      deviceFun, hostFun, fat_cubin_handle);
-  ctx->cuobjdumpParseBinary(fat_cubin_handle);
-  context->register_function(fat_cubin_handle, hostFun, deviceFun);
+      "fatbin_handle = %u\n",
+      deviceFun, hostFun, fatbin_handle);
+  ctx->load_fatbin_ptx(fatbin_handle);
+  context->register_function(fatbin_handle, hostFun, deviceFun);
 }
 
 void cudaRegisterVarInternal(
@@ -481,7 +481,7 @@ void cudaRegisterVarInternal(
       "GPGPU-Sim PTX: __cudaRegisterVar: Registering const memory space of %d "
       "bytes\n",
       size);
-  ctx->cuobjdumpParseBinary((unsigned)(unsigned long long)fatCubinHandle);
+  ctx->load_fatbin_ptx((unsigned)(unsigned long long)fatCubinHandle);
   fflush(stdout);
   if (constant && !global && !ext) {
     ctx->func_sim->gpgpu_ptx_sim_register_const_variable(hostVar, deviceName,
@@ -2054,33 +2054,14 @@ void cuda_runtime_api::extract_ptx_files_using_cuobjdump_internal(
   }
 }
 
-void cuda_runtime_api::extract_ptx_files_using_cuobjdump(CUctx_st *context) {
+void cuda_runtime_api::cuobjdumpInit() {
+  CUctx_st *context = GPGPUSim_Context(gpgpu_ctx);
   std::string app_binary = get_app_binary();
-  this->extract_ptx_files_using_cuobjdump_internal(context, app_binary);
-}
-
-//! Call cuobjdump to extract everything (-elf -sass -ptx)
-/*!
- *	This Function extract the whole PTX (for all the files) using cuobjdump
- *	to _cuobjdump_complete_output_XXXXXX then runs a parser to chop it up
- *with each binary in its own file It is also responsible for extracting the
- *libraries linked to the binary if the option is enabled
- * */
-void cuda_runtime_api::extract_code_using_cuobjdump_internal(
-    CUctx_st *context, std::string &app_binary) {
   extract_ptx_files_using_cuobjdump_internal(context, app_binary);
 }
 
-void cuda_runtime_api::extract_code_using_cuobjdump() {
-  CUctx_st *context = GPGPUSim_Context(gpgpu_ctx);
-  std::string app_binary = get_app_binary();
-  extract_code_using_cuobjdump_internal(context, app_binary);
-}
-
-void cuda_runtime_api::cuobjdumpInit() { extract_code_using_cuobjdump(); }
-
 //! Load the PTX files selected by CUDA 11.8 cuobjdump.
-void gpgpu_context::cuobjdumpParseBinary(unsigned int handle) {
+void gpgpu_context::load_fatbin_ptx(unsigned int handle) {
   CUctx_st *context = GPGPUSim_Context(this);
   if (api->fatbin_registered[handle]) return;
   api->fatbin_registered[handle] = true;
