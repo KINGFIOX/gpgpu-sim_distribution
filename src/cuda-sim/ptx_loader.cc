@@ -280,10 +280,7 @@ void gpgpu_context::gpgpu_ptx_info_load_from_filename(const char *filename,
   std::string ptxas_filename(std::string(filename) + "as");
   char buff[1024], extra_flags[1024];
   extra_flags[0] = 0;
-  if (!device_runtime->g_cdp_enabled)
-    snprintf(extra_flags, 1024, "--gpu-name=sm_%u", sm_version);
-  else
-    snprintf(extra_flags, 1024, "--compile-only --gpu-name=sm_%u", sm_version);
+  snprintf(extra_flags, 1024, "--gpu-name=sm_%u", sm_version);
   snprintf(
       buff, 1024,
       "$CUDA_INSTALL_PATH/bin/ptxas %s -v %s --output-file  /dev/null 2> %s",
@@ -364,12 +361,7 @@ void gpgpu_context::gpgpu_ptxinfo_load_from_string(const char *p_for_info,
           "A register size/SM mismatch may result in occupancy differences.");
       exit(1);
     }
-    if (!device_runtime->g_cdp_enabled)
-      snprintf(extra_flags, 1024, "--gpu-name=sm_%u", g_occupancy_sm_number);
-    else
-      snprintf(extra_flags, 1024, "--compile-only --gpu-name=sm_%u",
-               g_occupancy_sm_number);
-
+    snprintf(extra_flags, 1024, "--gpu-name=sm_%u", g_occupancy_sm_number);
     snprintf(commandline, 1024,
              "$CUDA_INSTALL_PATH/bin/ptxas %s -v %s --output-file  "
              "/dev/null 2> %s",
@@ -444,12 +436,7 @@ void gpgpu_context::gpgpu_ptxinfo_load_from_string(const char *p_for_info,
     extra_flags[0] = 0;
 
     if (sm_version == 0) sm_version = 20;
-    if (!device_runtime->g_cdp_enabled)
-      snprintf(extra_flags, 1024, "--gpu-name=sm_%u", sm_version);
-    else
-      snprintf(extra_flags, 1024, "--compile-only --gpu-name=sm_%u",
-               sm_version);
-
+    snprintf(extra_flags, 1024, "--gpu-name=sm_%u", sm_version);
     snprintf(
         commandline, 1024,
         "$CUDA_INSTALL_PATH/bin/ptxas %s -v %s --output-file  /dev/null 2> %s",

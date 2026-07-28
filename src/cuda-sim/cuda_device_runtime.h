@@ -2,6 +2,9 @@
 #define __cuda_device_runtime_h__
 // Jin: cuda_device_runtime.h
 // Defines CUDA device runtime APIs for CDP support
+
+#include "ptx_ir.h"
+
 class device_launch_config_t {
  public:
   device_launch_config_t() {}
@@ -45,7 +48,6 @@ class cuda_device_runtime {
   unsigned g_kernel_launch_latency;
   unsigned g_TB_launch_latency;
   unsigned long long g_max_total_param_size;
-  bool g_cdp_enabled;
 
   // backward pointer
   class gpgpu_context* gpgpu_ctx;

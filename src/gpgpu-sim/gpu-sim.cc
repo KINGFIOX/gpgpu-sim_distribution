@@ -71,6 +71,7 @@
 #include <stdio.h>
 #include <string.h>
 #include <algorithm>
+#include <cassert>
 #include <iostream>
 #include <sstream>
 #include <string>
@@ -611,9 +612,11 @@ void gpgpu_sim_config::reg_options(option_parser_t opp) {
   option_parser_register(opp, "-gpgpu_kernel_launch_latency", OPT_INT32,
                          &(gpgpu_ctx->device_runtime->g_kernel_launch_latency),
                          "Kernel launch latency in cycles. Default: 0", "0");
+  bool cdp_enabled;
   option_parser_register(opp, "-gpgpu_cdp_enabled", OPT_BOOL,
-                         &(gpgpu_ctx->device_runtime->g_cdp_enabled),
+                         &cdp_enabled,
                          "Turn on CDP", "0");
+  assert(!cdp_enabled && "cdp should be disabled");
 
   option_parser_register(opp, "-gpgpu_TB_launch_latency", OPT_INT32,
                          &(gpgpu_ctx->device_runtime->g_TB_launch_latency),

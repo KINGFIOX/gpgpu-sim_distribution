@@ -403,8 +403,7 @@ void **cudaRegisterFatBinaryInternal(void *fatCubin,
     announce_call(__my_func__);
   }
   if (ctx->api->fatbin_registered) {
-    fprintf(stderr,
-            "GPGPU-Sim PTX: multiple fat binaries are unsupported\n");
+    fprintf(stderr, "GPGPU-Sim PTX: multiple fat binaries are unsupported\n");
     exit(EXIT_FAILURE);
   }
 
@@ -1935,7 +1934,8 @@ __host__ cudaError_t CUDARTAPI cudaEventSynchronize(cudaEvent_t event) {
   printf("GPGPU-Sim API: cudaEventSynchronize ** waiting for event\n");
   fflush(stdout);
   CUevent_st *e = (CUevent_st *)event;
-  while (!e->done());
+  while (!e->done())
+    ;
   printf("GPGPU-Sim API: cudaEventSynchronize ** event detected\n");
   fflush(stdout);
   return g_last_cudaError = cudaSuccess;
@@ -2023,10 +2023,10 @@ void cuda_runtime_api::extract_ptx_files_using_cuobjdump_internal(
     printf("WARNING: Failed to execute cuobjdump to get list of ptx files \n");
     exit(0);
   }
-  if (!gpgpu_ctx->device_runtime->g_cdp_enabled) {
+
+  {
     // based on the list above, dump ptx files individually. Format of dumped
     // ptx file is prog_name.unique_no.sm_<>.ptx
-
     std::ifstream infile(ptx_list_file_name);
     std::string line;
     while (std::getline(infile, line)) {
