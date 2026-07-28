@@ -3554,14 +3554,15 @@ barrier_set_t::barrier_set_t(shader_core_ctx *shader,
   if (max_warps_per_core > WARP_PER_CTA_MAX) {
     printf(
         "ERROR ** increase WARP_PER_CTA_MAX in shader.h from %u to >= %u or "
-        "warps per cta in gpgpusim.config\n",
+        "warps per cta in the embedded GPU model configuration\n",
         WARP_PER_CTA_MAX, max_warps_per_core);
     exit(1);
   }
   if (max_barriers_per_cta > MAX_BARRIERS_PER_CTA) {
     printf(
         "ERROR ** increase MAX_BARRIERS_PER_CTA in abstract_hardware_model.h "
-        "from %u to >= %u or barriers per cta in gpgpusim.config\n",
+        "from %u to >= %u or barriers per cta in the embedded GPU model "
+        "configuration\n",
         MAX_BARRIERS_PER_CTA, max_barriers_per_cta);
     exit(1);
   }

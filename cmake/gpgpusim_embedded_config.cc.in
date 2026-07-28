@@ -1,0 +1,19 @@
+#include "gpgpusim_config.h"
+
+namespace {
+
+constexpr char kGpuModel[] = "@GPGPUSIM_GPU_MODEL@";
+constexpr char kGpuConfig[] = R"GPGPUSIM_CONFIG(@GPGPUSIM_CONFIG_CONTENT@)GPGPUSIM_CONFIG";
+constexpr char kInterconnectConfig[] = R"GPGPUSIM_ICNT(@GPGPUSIM_INTERCONNECT_CONFIG_CONTENT@)GPGPUSIM_ICNT";
+
+}  // namespace
+
+namespace gpgpusim {
+
+const char *embedded_gpu_model() { return kGpuModel; }
+
+const char *embedded_gpu_config() { return kGpuConfig; }
+
+const char *embedded_interconnect_config() { return kInterconnectConfig; }
+
+}  // namespace gpgpusim

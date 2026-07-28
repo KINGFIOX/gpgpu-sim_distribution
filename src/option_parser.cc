@@ -31,7 +31,6 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
-#include <fstream>
 #include <iomanip>
 #include <iostream>
 #include <list>
@@ -222,17 +221,6 @@ class OptionParser {
           i += 1;
         }
         optionFound = true;
-      } else if (string(argv[i]) == "-config") {
-        if (i + 1 >= argc) {
-          fprintf(stderr,
-                  "\n\nGPGPU-Sim ** ERROR: Missing filename for option "
-                  "'-config'.\n");
-          exit(1);
-        }
-
-        ParseFile(argv[i + 1]);
-        i += 1;
-        optionFound = true;
       }
       if (optionFound == false) {
         fprintf(stderr, "\n\nGPGPU-Sim ** ERROR: Unknown Option: '%s' \n",
@@ -242,28 +230,19 @@ class OptionParser {
     }
   }
 
-  void ParseFile(const char *filename) {
-    ifstream inputFile;
+  void ParseConfig(const char *config) {
+    stringstream input(config);
     stringstream args;
 
-    // open config file, stream every line into a continuous buffer
-    // get rid of comments in the process
-    inputFile.open(filename);
-    if (!inputFile.good()) {
-      fprintf(stderr, "\n\nGPGPU-Sim ** ERROR: Cannot open config file '%s'\n",
-              filename);
-      exit(1);
-    }
-    while (inputFile.good()) {
+    while (input.good()) {
       string line;
-      getline(inputFile, line);
+      getline(input, line);
       size_t commentStart = line.find_first_of("#");
       if (commentStart != line.npos) {
         line.erase(commentStart);
       }
       args << line << ' ';
     }
-    inputFile.close();
 
     ParseStringStream(args);
   }
@@ -407,9 +386,9 @@ void option_parser_cmdline(option_parser_t opp, int argc, const char *argv[]) {
   return p_opr->ParseCommandLine(argc, argv);
 }
 
-void option_parser_cfgfile(option_parser_t opp, const char *filename) {
+void option_parser_config_string(option_parser_t opp, const char *config) {
   OptionParser *p_opr = reinterpret_cast<OptionParser *>(opp);
-  p_opr->ParseFile(filename);
+  p_opr->ParseConfig(config);
 }
 
 void option_parser_delimited_string(option_parser_t opp,
@@ -467,8 +446,8 @@ int cppinterfacetest(int argc, const char *argv[]) {
   cout << "Commandline Parse Results: \n";
   optionparser.Print(stdout);
 
-  optionparser.ParseFile("test.config");
-  cout << "File Parse Results: \n";
+  optionparser.ParseConfig("-idata 7\n# ignored\n-sdata embedded");
+  cout << "Config Parse Results: \n";
   optionparser.Print(stdout);
   cout << c.sdata << ' ' << c.idata << endl;
 
@@ -506,8 +485,8 @@ int cinterfacetest(int argc, const char *argv[]) {
   printf("Commandline Parse Results: \n");
   option_parser_print(opp, stdout);
 
-  option_parser_cfgfile(opp, "test.config");
-  printf("File Parse Results: \n");
+  option_parser_config_string(opp, "-idata 7\n# ignored\n-sdata embedded");
+  printf("Config Parse Results: \n");
   option_parser_print(opp, stdout);
   printf("%s %d\n", otherstr, c.idata);
 

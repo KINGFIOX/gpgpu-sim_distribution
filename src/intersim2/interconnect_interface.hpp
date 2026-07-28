@@ -48,7 +48,7 @@ class InterconnectInterface {
 public:
   InterconnectInterface();
   virtual ~InterconnectInterface();
-  static InterconnectInterface* New(const char* const config_file);
+  static InterconnectInterface* NewFromString(const char* config);
   virtual void CreateInterconnect(unsigned n_shader,  unsigned n_mem);
   
   //node side functions
@@ -128,5 +128,4 @@ protected:
 };
 
 #endif
-
 

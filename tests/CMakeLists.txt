@@ -3,22 +3,16 @@ enable_language(CUDA)
 
 add_executable(runtime_smoke runtime_smoke.cu)
 set_target_properties(runtime_smoke PROPERTIES
-        CUDA_ARCHITECTURES 70-virtual
+        CUDA_ARCHITECTURES "${GPGPUSIM_CUDA_ARCHITECTURE}-virtual"
         CUDA_RUNTIME_LIBRARY None)
 target_link_libraries(runtime_smoke PRIVATE cudart)
 
-set(TEST_CONFIG_DIR "${CMAKE_CURRENT_BINARY_DIR}/config")
-file(MAKE_DIRECTORY "${TEST_CONFIG_DIR}")
-configure_file(
-        "${PROJECT_SOURCE_DIR}/configs/tested-cfgs/SM7_QV100/gpgpusim.config"
-        "${TEST_CONFIG_DIR}/gpgpusim.config" COPYONLY)
-configure_file(
-        "${PROJECT_SOURCE_DIR}/configs/tested-cfgs/SM7_QV100/config_volta_islip.icnt"
-        "${TEST_CONFIG_DIR}/config_volta_islip.icnt" COPYONLY)
+set(TEST_RUN_DIR "${CMAKE_CURRENT_BINARY_DIR}/run/runtime_smoke")
+file(MAKE_DIRECTORY "${TEST_RUN_DIR}")
 
 add_test(NAME runtime_vector_add COMMAND runtime_smoke)
 set_tests_properties(runtime_vector_add PROPERTIES
-        WORKING_DIRECTORY "${TEST_CONFIG_DIR}"
+        WORKING_DIRECTORY "${TEST_RUN_DIR}"
         ENVIRONMENT
         "GPGPUSIM_ROOT=${PROJECT_SOURCE_DIR};CUDA_INSTALL_PATH=${CUDAToolkit_TARGET_DIR};PATH=${CUDAToolkit_BIN_DIR}:$ENV{PATH}")
 

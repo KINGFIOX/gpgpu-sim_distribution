@@ -30,6 +30,7 @@
 #include <assert.h>
 #include "../intersim2/globals.hpp"
 #include "../intersim2/interconnect_interface.hpp"
+#include "../gpgpusim_config.h"
 #include "local_interconnect.h"
 
 icnt_create_p icnt_create;
@@ -164,7 +165,8 @@ void icnt_wrapper_init() {
   switch (g_network_mode) {
     case INTERSIM:
       // FIXME: delete the object: may add icnt_done wrapper
-      g_icnt_interface = InterconnectInterface::New(g_network_config_filename);
+      g_icnt_interface = InterconnectInterface::NewFromString(
+          gpgpusim::embedded_interconnect_config());
       icnt_create = intersim2_create;
       icnt_init = intersim2_init;
       icnt_has_buffer = intersim2_has_buffer;

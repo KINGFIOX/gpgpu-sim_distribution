@@ -357,10 +357,10 @@ void gpgpu_context::gpgpu_ptxinfo_load_from_string(const char *p_for_info,
     if (g_occupancy_sm_number == 0) {
       fprintf(
           stderr,
-          "gpgpusim.config must specify the sm version for the GPU that you "
-          "use to compute occupancy \"-gpgpu_occupancy_sm_number XX\".\n"
+          "The embedded GPU model configuration must specify the sm version "
+          "used to compute occupancy \"-gpgpu_occupancy_sm_number XX\".\n"
           "The register file size is specifically tied to the sm version used "
-          "to querry ptxas for register usage.\n"
+          "to query ptxas for register usage.\n"
           "A register size/SM mismatch may result in occupancy differences.");
       exit(1);
     }

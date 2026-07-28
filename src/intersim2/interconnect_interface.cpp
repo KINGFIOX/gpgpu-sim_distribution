@@ -45,15 +45,15 @@
 #include "network.hpp"
 #include "trace.h"
 
-InterconnectInterface* InterconnectInterface::New(const char* const config_file)
+InterconnectInterface* InterconnectInterface::NewFromString(const char* config)
 {
-  if (! config_file ) {
-    cout << "Interconnect Requires a configfile" << endl;
+  if (!config) {
+    cout << "Interconnect requires an embedded configuration" << endl;
     exit (-1);
   }
   InterconnectInterface* icnt_interface = new InterconnectInterface();
   icnt_interface->_icnt_config = new IntersimConfig();
-  icnt_interface->_icnt_config->ParseFile(config_file);
+  icnt_interface->_icnt_config->ParseString(config);
 
   return icnt_interface;
 }

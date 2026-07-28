@@ -661,7 +661,7 @@ void gpgpu_sim::launch(kernel_info_t *kinfo) {
            cta_size, m_shader_config->n_thread_per_shader);
     printf(
         "                 => either change -gpgpu_shader argument in "
-        "gpgpusim.config file or\n");
+        "the embedded GPU model configuration or\n");
     printf(
         "                 modify the CUDA source to decrease the kernel block "
         "size.\n");

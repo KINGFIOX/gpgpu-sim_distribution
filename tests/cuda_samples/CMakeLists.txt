@@ -38,7 +38,7 @@ function(gpgpusim_add_cuda_sample name)
     set_target_properties(${name} PROPERTIES
             CXX_STANDARD 17
             CXX_STANDARD_REQUIRED ON
-            CUDA_ARCHITECTURES 70-virtual
+            CUDA_ARCHITECTURES "${GPGPUSIM_CUDA_ARCHITECTURE}-virtual"
             CUDA_RUNTIME_LIBRARY None
             BUILD_RPATH "$<TARGET_FILE_DIR:cudart>"
             RUNTIME_OUTPUT_DIRECTORY "${CUDA_SAMPLES_BINARY_DIR}")
@@ -61,12 +61,6 @@ function(gpgpusim_add_cuda_sample name)
         set(test_name "${name}.${mode}")
         set(run_dir "${CUDA_SAMPLES_RUN_ROOT}/${name}/${mode}")
         file(MAKE_DIRECTORY "${run_dir}")
-        configure_file(
-                "${PROJECT_SOURCE_DIR}/configs/tested-cfgs/SM7_QV100/gpgpusim.config"
-                "${run_dir}/gpgpusim.config" COPYONLY)
-        configure_file(
-                "${PROJECT_SOURCE_DIR}/configs/tested-cfgs/SM7_QV100/config_volta_islip.icnt"
-                "${run_dir}/config_volta_islip.icnt" COPYONLY)
 
         add_test(NAME "${test_name}"
                 COMMAND "$<TARGET_FILE:${name}>" ${SAMPLE_ARGS})

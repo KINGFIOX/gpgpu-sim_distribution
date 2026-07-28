@@ -36,7 +36,8 @@ The repository path in these commands is for SBSA systems. On x86-64, replace
 ```bash
 cmake -S . -B build \
   -DCMAKE_BUILD_TYPE=Release \
-  -DCUDAToolkit_ROOT=/usr/local/cuda-11.8
+  -DCUDAToolkit_ROOT=/usr/local/cuda-11.8 \
+  -DGPGPUSIM_GPU_MODEL=SM7_QV100
 cmake --build build --parallel
 ctest --test-dir build --output-on-failure
 ```
@@ -51,13 +52,29 @@ opt in explicitly with:
 
 ```cmake
 find_package(GPGPUSim CONFIG REQUIRED)
-set_target_properties(my_cuda_test PROPERTIES CUDA_RUNTIME_LIBRARY None)
+set_target_properties(my_cuda_test PROPERTIES
+  CUDA_ARCHITECTURES "${GPGPUSIM_CUDA_ARCHITECTURE}-virtual"
+  CUDA_RUNTIME_LIBRARY None)
 target_link_libraries(my_cuda_test PRIVATE GPGPUSim::cudart)
 ```
 
 Configure that project with `-DGPGPUSim_DIR=/path/to/gpgpu-sim/build` (or add
 the same directory to `CMAKE_PREFIX_PATH`). The package refers to the existing
-build-tree library; there is deliberately no install package for `libcudart`.
+build-tree library and exposes `GPGPUSIM_GPU_MODEL` and
+`GPGPUSIM_CUDA_ARCHITECTURE`; there is deliberately no install package for
+`libcudart`.
+
+## GPU Model
+
+Each build embeds one GPU model directly into `libcudart`. The supported values
+of `GPGPUSIM_GPU_MODEL` are `SM3_KEPLER_TITAN`, `SM6_TITANX`, `SM7_GV100`,
+`SM7_QV100`, `SM7_TITANV`, `SM75_RTX2060`, `SM75_RTX2060_S`, and
+`SM86_RTX3070`. Changing the model requires reconfiguring and rebuilding.
+
+The runtime does not read `gpgpusim.config` or an interconnect configuration
+from the process working directory. CMake embeds the selected files from
+`configs/tested-cfgs`, and test PTX is compiled for the corresponding virtual
+architecture.
 
 `scripts/short-tests-cmake.sh` runs the configure, build, and test sequence in one
 command. Set `GPGPUSIM_BUILD_DIR` to select a different build directory.
@@ -101,10 +118,11 @@ Selecting both modes registers both CTest tests while keeping one executable
 target. Selecting neither mode defaults to functional simulation. `TIMEOUT`
 applies independently to every registered mode.
 
-All device-code test binaries use `70-virtual`, so their CUDA fatbins contain
-host ELF plus PTX and no device ELF/cubin. Separate linkage and fatbin audits
-verify the simulator `libcudart` dependency and PTX-only output. The upstream
-sample sources are not modified, and their license is retained alongside them.
+All device-code test binaries use the selected model's virtual architecture, so
+their CUDA fatbins contain host ELF plus PTX and no device ELF/cubin. Separate
+linkage and fatbin audits verify the simulator `libcudart` dependency and
+PTX-only output. The upstream sample sources are not modified, and their
+license is retained alongside them.
 
 ## Libraries
 

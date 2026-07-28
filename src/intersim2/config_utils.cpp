@@ -160,7 +160,11 @@ void Configuration::ParseFile(string const & filename)
 
 void Configuration::ParseString(string const & str)
 {
-  _config_string = str + ';';
+  _config_string = str;
+  const string::size_type last = _config_string.find_last_not_of(" \t\r\n");
+  if((last != string::npos) && (_config_string[last] != ';')) {
+    _config_string += ';';
+  }
   yyparse();
   _config_string = "";
 }
@@ -172,9 +176,11 @@ int Configuration::Input(char * line, int max_size)
   if(_config_file) {
     length = fread(line, 1, max_size, _config_file);
   } else {
-    length = _config_string.length();
-    _config_string.copy(line, max_size);
-    _config_string.clear();
+    length = _config_string.length() < static_cast<size_t>(max_size)
+               ? static_cast<int>(_config_string.length())
+               : max_size;
+    _config_string.copy(line, length);
+    _config_string.erase(0, length);
   }
 
   return length;

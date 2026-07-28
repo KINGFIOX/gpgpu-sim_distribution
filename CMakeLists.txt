@@ -14,6 +14,7 @@ set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 option(GPGPUSIM_ENABLE_TRACE "Enable GPGPU-Sim debug tracing" ON)
 
 include(scripts/gpgpusim_check.cmake)
+include(cmake/GPGPUSimModel.cmake)
 include(CTest)
 
 if (CMAKE_BUILD_TYPE STREQUAL "Debug")

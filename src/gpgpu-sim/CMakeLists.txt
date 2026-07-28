@@ -1,4 +1,5 @@
 list(APPEND gpgpusim_SRC addrdec.cc
+    ${GPGPUSIM_EMBEDDED_CONFIG_SOURCE}
     dram.cc
     dram_sched.cc
     gpu-cache.cc
@@ -20,6 +21,7 @@ list(APPEND gpgpusim_SRC addrdec.cc
 
 # Create libgpgpusim.a
 add_library(gpgpusim STATIC ${gpgpusim_SRC})
-target_include_directories(gpgpusim PUBLIC ${CMAKE_CURRENT_SOURCE_DIR})
+target_include_directories(gpgpusim PUBLIC
+        ${CMAKE_CURRENT_SOURCE_DIR}
+        ${PROJECT_SOURCE_DIR}/src)
 target_include_directories(gpgpusim PUBLIC ${CUDAToolkit_INCLUDE_DIRS})
-

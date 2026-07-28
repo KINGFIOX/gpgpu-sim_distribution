@@ -35,13 +35,11 @@
 #include "cuda-sim/ptx_parser.h"
 #include "gpgpu-sim/gpu-sim.h"
 #include "gpgpu-sim/icnt_wrapper.h"
+#include "gpgpusim_config.h"
 #include "option_parser.h"
 #include "stream_manager.h"
 
 #define MAX(a, b) (((a) > (b)) ? (a) : (b))
-
-static int sg_argc = 3;
-static const char *sg_argv[] = {"", "-config", "gpgpusim.config"};
 
 void *gpgpu_sim_thread_sequential(void *ctx_ptr) {
   gpgpu_context *ctx = (gpgpu_context *)ctx_ptr;
@@ -224,7 +222,9 @@ gpgpu_sim *gpgpu_context::gpgpu_ptx_sim_init_perf() {
   the_gpgpusim->g_the_gpu_config->reg_options(
       opp);  // register GPU microrachitecture options
 
-  option_parser_cmdline(opp, sg_argc, sg_argv);  // parse configuration options
+  option_parser_config_string(opp, gpgpusim::embedded_gpu_config());
+  fprintf(stdout, "GPGPU-Sim: GPU model %s\n",
+          gpgpusim::embedded_gpu_model());
   fprintf(stdout, "GPGPU-Sim: Configuration options:\n\n");
   option_parser_print(opp, stdout);
   // Set the Numeric locale to a standard locale where a decimal point is a

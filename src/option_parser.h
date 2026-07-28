@@ -59,8 +59,8 @@ void option_parser_register(option_parser_t opp, const char *name,
 // parse command line
 void option_parser_cmdline(option_parser_t opp, int argc, const char *argv[]);
 
-// parse config file
-void option_parser_cfgfile(option_parser_t opp, const char *filename);
+// parse a complete configuration string
+void option_parser_config_string(option_parser_t opp, const char *config);
 
 // parse a delimited string
 void option_parser_delimited_string(option_parser_t opp,
