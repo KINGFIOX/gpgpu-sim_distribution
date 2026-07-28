@@ -60,7 +60,7 @@ Configure that project with `-DGPGPUSim_DIR=/path/to/gpgpu-sim/build` (or add
 the same directory to `CMAKE_PREFIX_PATH`). The package refers to the existing
 build-tree library; there is deliberately no install package for `libcudart`.
 
-`short-tests-cmake.sh` runs the configure, build, and test sequence in one
+`scripts/short-tests-cmake.sh` runs the configure, build, and test sequence in one
 command. Set `GPGPUSIM_BUILD_DIR` to select a different build directory.
 
 ## CUDA Samples Tests
