@@ -57,8 +57,9 @@ int main() {
         "cudaMalloc(result)");
   cudaStream_t stream = nullptr;
   check(cudaStreamCreate(&stream), "cudaStreamCreate");
-  check(cudaMemcpyAsync(device_left, left, bytes, cudaMemcpyHostToDevice, stream),
-        "cudaMemcpyAsync(left)");
+  check(
+      cudaMemcpyAsync(device_left, left, bytes, cudaMemcpyHostToDevice, stream),
+      "cudaMemcpyAsync(left)");
   check(cudaStreamSynchronize(stream), "cudaStreamSynchronize");
   check(cudaStreamDestroy(stream), "cudaStreamDestroy");
   check(cudaMemcpy(device_right, right, bytes, cudaMemcpyHostToDevice),

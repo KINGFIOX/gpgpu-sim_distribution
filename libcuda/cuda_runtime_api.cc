@@ -131,7 +131,7 @@
 #include <semaphore.h>
 
 static_assert(CUDART_VERSION == 11080,
-              "libcuda must be built with CUDA Toolkit 11.8 headers");
+              "libcudart must be built with CUDA Toolkit 11.8 headers");
 
 /*DEVICE_BUILTIN*/
 struct cudaArray {

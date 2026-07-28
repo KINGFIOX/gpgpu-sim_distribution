@@ -12,25 +12,24 @@ set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 
 option(GPGPUSIM_ENABLE_TRACE "Enable GPGPU-Sim debug tracing" ON)
-option(GPGPUSIM_ENABLE_CUDA_SAMPLES
-       "Build the pinned CUDA Samples 11.8 regression tests" ON)
+option(GPGPUSIM_ENABLE_CUDA_SAMPLES "Build the pinned CUDA Samples 11.8 regression tests" ON)
 
 include(gpgpusim_check.cmake)
 include(CTest)
 
-if(CMAKE_BUILD_TYPE STREQUAL "Debug")
-  add_compile_definitions(DEBUG=1)
-  add_compile_options("$<$<COMPILE_LANGUAGE:CXX>:-Wall;-Wno-unused-function;-Wno-sign-compare;-g;-fPIC>")
-  add_compile_options("$<$<COMPILE_LANGUAGE:C>:-Wall;-Wno-unused-function;-Wno-sign-compare;-ggdb;-fPIC>")
-else()
-  add_compile_definitions(DEBUG=0)
-  add_compile_options("$<$<COMPILE_LANGUAGE:CXX>:-O3;-g;-Wall;-Wno-unused-function;-Wno-sign-compare;-fPIC>")
-  add_compile_options("$<$<COMPILE_LANGUAGE:C>:-Wall;-Wno-unused-function;-Wno-sign-compare;-fPIC>")
-endif()
+if (CMAKE_BUILD_TYPE STREQUAL "Debug")
+    add_compile_definitions(DEBUG=1)
+    add_compile_options("$<$<COMPILE_LANGUAGE:CXX>:-Wall;-Wno-unused-function;-Wno-sign-compare;-g;-fPIC>")
+    add_compile_options("$<$<COMPILE_LANGUAGE:C>:-Wall;-Wno-unused-function;-Wno-sign-compare;-ggdb;-fPIC>")
+else ()
+    add_compile_definitions(DEBUG=0)
+    add_compile_options("$<$<COMPILE_LANGUAGE:CXX>:-O3;-g;-Wall;-Wno-unused-function;-Wno-sign-compare;-fPIC>")
+    add_compile_options("$<$<COMPILE_LANGUAGE:C>:-Wall;-Wno-unused-function;-Wno-sign-compare;-fPIC>")
+endif ()
 
-if(GPGPUSIM_ENABLE_TRACE)
-  add_compile_definitions(TRACING_ON=1)
-endif()
+if (GPGPUSIM_ENABLE_TRACE)
+    add_compile_definitions(TRACING_ON=1)
+endif ()
 
 add_subdirectory(src)
 add_subdirectory(libcuda)
@@ -39,29 +38,23 @@ add_library(cudart SHARED $<TARGET_OBJECTS:gpgpusim_entrypoint>)
 add_library(entrypoint STATIC $<TARGET_OBJECTS:gpgpusim_entrypoint>)
 
 target_link_libraries(cudart PRIVATE
-  -Wl,--whole-archive cuda -Wl,--no-whole-archive
-  ptxsim gpgpusim intersim m z pthread)
-target_link_libraries(entrypoint PUBLIC cuda ptxsim gpgpusim intersim)
-
-# The Driver API subset shares the same process-wide simulator state as cudart.
-add_custom_command(TARGET cudart POST_BUILD
-  COMMAND ${CMAKE_COMMAND} -E create_symlink
-          "$<TARGET_FILE_NAME:cudart>"
-          "$<TARGET_FILE_DIR:cudart>/libcuda.so")
+        -Wl,--whole-archive cudart_impl -Wl,--no-whole-archive
+        ptxsim gpgpusim intersim m z pthread)
+target_link_libraries(entrypoint PUBLIC cudart_impl ptxsim gpgpusim intersim)
 
 # Export the simulator runtime from the build tree.  The library is
 # intentionally not installed: consumers must opt into the simulator by
 # pointing find_package at this build directory.
 export(TARGETS cudart
-  FILE "${CMAKE_BINARY_DIR}/GPGPUSimTargets.cmake"
-  NAMESPACE GPGPUSim::)
+        FILE "${CMAKE_BINARY_DIR}/GPGPUSimTargets.cmake"
+        NAMESPACE GPGPUSim::)
 configure_file(
-  "${PROJECT_SOURCE_DIR}/cmake/GPGPUSimConfig.cmake.in"
-  "${CMAKE_BINARY_DIR}/GPGPUSimConfig.cmake"
-  @ONLY)
+        "${PROJECT_SOURCE_DIR}/cmake/GPGPUSimConfig.cmake.in"
+        "${CMAKE_BINARY_DIR}/GPGPUSimConfig.cmake"
+        @ONLY)
 message(STATUS
-  "GPGPU-Sim build-tree package: ${CMAKE_BINARY_DIR}/GPGPUSimConfig.cmake")
+        "GPGPU-Sim build-tree package: ${CMAKE_BINARY_DIR}/GPGPUSimConfig.cmake")
 
-if(BUILD_TESTING)
-  add_subdirectory(tests)
-endif()
+if (BUILD_TESTING)
+    add_subdirectory(tests)
+endif ()

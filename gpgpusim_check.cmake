@@ -5,31 +5,31 @@ find_package(ZLIB REQUIRED)
 find_package(CUDAToolkit REQUIRED)
 
 message(CHECK_START "Checking supported platform")
-if(NOT CMAKE_SYSTEM_NAME STREQUAL "Linux")
-  message(FATAL_ERROR "GPGPU-Sim supports Linux only (found ${CMAKE_SYSTEM_NAME})")
-endif()
-if(NOT CMAKE_SYSTEM_PROCESSOR MATCHES "^(x86_64|amd64|aarch64)$")
-  message(FATAL_ERROR
-    "GPGPU-Sim supports x86-64 and AArch64 only (found ${CMAKE_SYSTEM_PROCESSOR})")
-endif()
+if (NOT CMAKE_SYSTEM_NAME STREQUAL "Linux")
+    message(FATAL_ERROR "GPGPU-Sim supports Linux only (found ${CMAKE_SYSTEM_NAME})")
+endif ()
+if (NOT CMAKE_SYSTEM_PROCESSOR MATCHES "^(x86_64|amd64|aarch64)$")
+    message(FATAL_ERROR
+            "GPGPU-Sim supports x86-64 and AArch64 only (found ${CMAKE_SYSTEM_PROCESSOR})")
+endif ()
 message(CHECK_PASS "Linux ${CMAKE_SYSTEM_PROCESSOR}")
 
 message(CHECK_START "Checking CUDA Toolkit")
-if(NOT CUDAToolkit_VERSION_MAJOR EQUAL 11 OR
-   NOT CUDAToolkit_VERSION_MINOR EQUAL 8)
-  message(FATAL_ERROR
-    "GPGPU-Sim requires CUDA Toolkit 11.8 (found ${CUDAToolkit_VERSION})")
-endif()
+if (NOT CUDAToolkit_VERSION_MAJOR EQUAL 11 OR
+        NOT CUDAToolkit_VERSION_MINOR EQUAL 8)
+    message(FATAL_ERROR
+            "GPGPU-Sim requires CUDA Toolkit 11.8 (found ${CUDAToolkit_VERSION})")
+endif ()
 message(CHECK_PASS "${CUDAToolkit_VERSION} at ${CUDAToolkit_TARGET_DIR}")
 
 message(CHECK_START "Checking CXX compiler")
-if(NOT CMAKE_CXX_COMPILER_ID STREQUAL "GNU")
-  message(FATAL_ERROR "GPGPU-Sim requires GCC (found ${CMAKE_CXX_COMPILER_ID})")
-endif()
+if (NOT CMAKE_CXX_COMPILER_ID STREQUAL "GNU")
+    message(FATAL_ERROR "GPGPU-Sim requires GCC (found ${CMAKE_CXX_COMPILER_ID})")
+endif ()
 message(CHECK_PASS "${CMAKE_CXX_COMPILER} ${CMAKE_CXX_COMPILER_VERSION}")
 
-if(NOT CMAKE_BUILD_TYPE)
-  set(CMAKE_BUILD_TYPE Release CACHE STRING "" FORCE)
-endif()
+if (NOT CMAKE_BUILD_TYPE)
+    set(CMAKE_BUILD_TYPE Release CACHE STRING "" FORCE)
+endif ()
 
 message(STATUS "Build type: ${CMAKE_BUILD_TYPE}")
