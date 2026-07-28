@@ -55,6 +55,8 @@ class ptx_recognizer;
 %token  ALIGN_DIRECTIVE
 %token  BRANCHTARGETS_DIRECTIVE
 %token  BYTE_DIRECTIVE
+%token  CALLPROTOTYPE_DIRECTIVE
+%token  CALLPROTOTYPE_REF
 %token  CALLTARGETS_DIRECTIVE
 %token  <int_value> CONST_DIRECTIVE
 %token  CONSTPTR_DIRECTIVE
@@ -275,7 +277,6 @@ function_decl_header: ENTRY_DIRECTIVE { $$ = 1; recognizer->g_func_decl=1; recog
 	| VISIBLE_DIRECTIVE FUNC_DIRECTIVE { $$ = 0; recognizer->g_func_decl=1; recognizer->func_header(".func"); }
 	| WEAK_DIRECTIVE FUNC_DIRECTIVE { $$ = 0; recognizer->g_func_decl=1; recognizer->func_header(".func"); }
 	| EXTERN_DIRECTIVE FUNC_DIRECTIVE { $$ = 2; recognizer->g_func_decl=1; recognizer->func_header(".func"); }
-	| WEAK_DIRECTIVE FUNC_DIRECTIVE { $$ = 0; recognizer->g_func_decl=1; recognizer->func_header(".func"); }
 	;
 
 param_list: /*empty*/
@@ -317,6 +318,38 @@ directive_statement: variable_declaration SEMI_COLON
 	| LOC_DIRECTIVE INT_OPERAND INT_OPERAND INT_OPERAND 
 	| PRAGMA_DIRECTIVE STRING SEMI_COLON { recognizer->add_pragma($2); }
 	| function_decl SEMI_COLON {/*Do nothing*/}
+	| callprototype_statement
+	;
+
+callprototype_statement: CALLPROTOTYPE_DIRECTIVE
+	LEFT_PAREN callprototype_param_list RIGHT_PAREN IDENTIFIER
+	LEFT_PAREN callprototype_param_list RIGHT_PAREN SEMI_COLON
+	;
+
+callprototype_param_list: /* empty */
+	| callprototype_params
+	;
+
+callprototype_params: callprototype_param
+	| callprototype_params COMMA callprototype_param
+	;
+
+callprototype_param: PARAM_DIRECTIVE callprototype_param_specs callprototype_identifier
+	;
+
+callprototype_param_specs: callprototype_param_spec
+	| callprototype_param_specs callprototype_param_spec
+	;
+
+callprototype_param_spec: ALIGN_DIRECTIVE INT_OPERAND
+	| S8_TYPE | S16_TYPE | S32_TYPE | S64_TYPE
+	| U8_TYPE | U16_TYPE | U32_TYPE | U64_TYPE
+	| F16_TYPE | F32_TYPE | F64_TYPE
+	| B8_TYPE | B16_TYPE | B32_TYPE | B64_TYPE
+	;
+
+callprototype_identifier: IDENTIFIER
+	| IDENTIFIER LEFT_SQUARE_BRACKET INT_OPERAND RIGHT_SQUARE_BRACKET
 	;
 
 variable_declaration: variable_spec identifier_list { recognizer->add_variables(); }
@@ -407,21 +440,30 @@ scalar_type: S8_TYPE { recognizer->add_scalar_type_spec( S8_TYPE ); }
 	| SURFREF_TYPE  { recognizer->add_scalar_type_spec( SURFREF_TYPE ); }
 	;
 
-initializer_list: LEFT_BRACE literal_list RIGHT_BRACE { recognizer->add_array_initializer(); }
+initializer_list: LEFT_BRACE initializer_value_list RIGHT_BRACE { recognizer->add_array_initializer(); }
 	| LEFT_BRACE initializer_list RIGHT_BRACE { syntax_not_implemented(scanner, recognizer); }
 
-literal_list: literal_operand
-	| literal_list COMMA literal_operand;
+initializer_value_list: initializer_value
+	| initializer_value_list COMMA initializer_value;
+
+initializer_value: literal_operand
+	| IDENTIFIER { recognizer->add_scalar_operand($1); };
 
 instruction_statement:  instruction SEMI_COLON
 	| IDENTIFIER COLON { recognizer->add_label($1); }
 	| pred_spec instruction SEMI_COLON;
 
-instruction: opcode_spec LEFT_PAREN operand RIGHT_PAREN { recognizer->set_return(); } COMMA operand COMMA LEFT_PAREN operand_list RIGHT_PAREN
+instruction: return_call_prefix COMMA operand COMMA LEFT_PAREN operand_list RIGHT_PAREN
+	| return_call_prefix COMMA operand COMMA LEFT_PAREN operand_list RIGHT_PAREN CALLPROTOTYPE_REF
 	| opcode_spec operand COMMA LEFT_PAREN operand_list RIGHT_PAREN
+	| opcode_spec operand COMMA LEFT_PAREN operand_list RIGHT_PAREN CALLPROTOTYPE_REF
 	| opcode_spec operand COMMA LEFT_PAREN RIGHT_PAREN
 	| opcode_spec operand_list 
 	| opcode_spec
+	;
+
+return_call_prefix: opcode_spec LEFT_PAREN operand RIGHT_PAREN
+	{ recognizer->set_return(); }
 	;
 
 opcode_spec: OPCODE { recognizer->add_opcode($1); } option_list

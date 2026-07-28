@@ -81,7 +81,7 @@ command. Set `GPGPUSIM_BUILD_DIR` to select a different build directory.
 
 ## CUDA Samples Tests
 
-Six focused CUDA Samples 11.8 tests and their upstream `Common` helpers are
+Twenty-six focused CUDA Samples 11.8 tests and their upstream `Common` helpers are
 kept directly under `tests/cuda_samples`. They are built whenever
 `BUILD_TESTING` is enabled:
 
@@ -93,11 +93,15 @@ cmake --build build --parallel
 ctest --test-dir build -L cuda-samples-gate --output-on-failure
 ```
 
-The six sample targets are `deviceQuery`, `vectorAdd`,
-`simpleTemplates`, `simpleVoteIntrinsics`, `simpleAtomicIntrinsics`, and
-`clock`. Each target is built once and registered as functional and performance
-CTest tests. Tests use the `<sample>.functional` and `<sample>.performance`
-names and can be selected by mode label:
+The sample targets are `asyncAPI`, `bandwidthTest`, `clock`, `cppIntegration`,
+`cppOverload`, `cudaOpenMP`, `deviceQuery`, `dwtHaar1D`,
+`fp16ScalarProduct`, `FDTD3d`, `inlinePTX`, `interval`, `matrixMul`, `newdelete`,
+`reduction`, `scalarProd`, `simpleAtomicIntrinsics`, `simpleOccupancy`, `simplePrintf`,
+`simpleTemplates`, `simpleVoteIntrinsics`, `simpleZeroCopy`, `template`,
+`threadFenceReduction`, `transpose`, and `vectorAdd`. Each target is built once.
+Short-running targets are registered in both simulator modes, while larger
+workloads use functional mode only. Tests use the `<sample>.functional` and
+`<sample>.performance` names and can be selected by mode label:
 
 ```bash
 ctest --test-dir build -L cuda-samples-functional --output-on-failure
@@ -105,7 +109,8 @@ ctest --test-dir build -L cuda-samples-performance --output-on-failure
 ```
 
 The `gpgpusim_add_cuda_sample()` helper accepts `FUNCTIONAL`, `PERFORMANCE`,
-`SOURCES`, `ARGS`, and `TIMEOUT`; for example:
+`OPENMP`, `SOURCES`, `INCLUDE_DIRS`, `ARGS`, `DATA`, `PASS_REGEX`, and
+`TIMEOUT`; for example:
 
 ```cmake
 gpgpusim_add_cuda_sample(vectorAdd
@@ -116,13 +121,21 @@ gpgpusim_add_cuda_sample(vectorAdd
 
 Selecting both modes registers both CTest tests while keeping one executable
 target. Selecting neither mode defaults to functional simulation. `TIMEOUT`
-applies independently to every registered mode.
+applies independently to every registered mode. `DATA` files are copied into
+each mode's isolated working directory, and `PASS_REGEX` can require an
+upstream success marker in addition to a zero exit status. The `asyncAPI` and
+`matrixMul` test copies intentionally omit unsupported CUDA profiler calls and
+add workload controls while preserving the upstream defaults. The `interval`
+test copy keeps the double-precision interval Newton algorithm and CPU/GPU
+validation intact, but reduces its compile-time workload to one equation and
+one run. CTest uses these reduced workloads for practical simulation times.
 
 All device-code test binaries use the selected model's virtual architecture, so
 their CUDA fatbins contain host ELF plus PTX and no device ELF/cubin. Separate
 linkage and fatbin audits verify the simulator `libcudart` dependency and
-PTX-only output. The upstream sample sources are not modified, and their
-license is retained alongside them.
+PTX-only output. Apart from the documented `asyncAPI`, `matrixMul`, and `interval`
+adaptations, the upstream sample sources are not modified, and their license is
+retained alongside them.
 
 ## Libraries
 

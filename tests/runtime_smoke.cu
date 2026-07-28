@@ -31,6 +31,14 @@ int main() {
         "cudaDeviceCanAccessPeer");
   if (can_access_peer != 0) return EXIT_FAILURE;
 
+  constexpr size_t kMallocHeapLimit = 16 * 1024 * 1024;
+  check(cudaDeviceSetLimit(cudaLimitMallocHeapSize, kMallocHeapLimit),
+        "cudaDeviceSetLimit");
+  size_t malloc_heap_limit = 0;
+  check(cudaDeviceGetLimit(&malloc_heap_limit, cudaLimitMallocHeapSize),
+        "cudaDeviceGetLimit");
+  if (malloc_heap_limit != kMallocHeapLimit) return EXIT_FAILURE;
+
   int left[kElementCount];
   int right[kElementCount];
   int result[kElementCount] = {};

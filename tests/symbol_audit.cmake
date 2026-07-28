@@ -15,7 +15,9 @@ execute_process(
         COMMAND_ERROR_IS_FATAL ANY)
 foreach (required
         cudaMalloc cudaMemcpy cudaLaunchKernel cudaDeviceSynchronize
-        cudaDeviceGetAttribute cudaDeviceCanAccessPeer)
+        cudaDeviceGetAttribute cudaDeviceCanAccessPeer cudaDeviceSetLimit
+        cudaHostRegister
+        cudaHostUnregister cudaSetDeviceFlags)
     if (NOT symbols MATCHES " ${required}(\n|$)")
         message(FATAL_ERROR "required symbol ${required} is not exported")
     endif ()

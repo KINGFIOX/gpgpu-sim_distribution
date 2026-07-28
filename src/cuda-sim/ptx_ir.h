@@ -1403,13 +1403,19 @@ class function_info {
 class arg_buffer_t {
  public:
   arg_buffer_t(gpgpu_context *ctx) : m_src_op(ctx) {
+    m_dst = NULL;
     m_is_reg = false;
     m_is_param = false;
     m_param_value = NULL;
+    m_param_bytes = 0;
     m_reg_value = ptx_reg_t();
   }
+  arg_buffer_t(const arg_buffer_t &another)
+      : m_src_op(another.m_src_op), m_param_value(NULL) {
+    make_copy(another);
+  }
   arg_buffer_t(const arg_buffer_t &another, gpgpu_context *ctx)
-      : m_src_op(ctx) {
+      : m_src_op(ctx), m_param_value(NULL) {
     make_copy(another);
   }
   void make_copy(const arg_buffer_t &another) {
@@ -1418,13 +1424,23 @@ class arg_buffer_t {
     m_is_reg = another.m_is_reg;
     m_is_param = another.m_is_param;
     m_reg_value = another.m_reg_value;
-    m_param_bytes = another.m_param_bytes;
     if (m_is_param) {
+      m_param_bytes = another.m_param_bytes;
       m_param_value = malloc(m_param_bytes);
       memcpy(m_param_value, another.m_param_value, m_param_bytes);
+    } else {
+      m_param_bytes = 0;
+      m_param_value = NULL;
     }
   }
-  void operator=(const arg_buffer_t &another) { make_copy(another); }
+  arg_buffer_t &operator=(const arg_buffer_t &another) {
+    if (this != &another) {
+      if (m_is_param) free(m_param_value);
+      m_param_value = NULL;
+      make_copy(another);
+    }
+    return *this;
+  }
   ~arg_buffer_t() {
     if (m_is_param) free(m_param_value);
   }
@@ -1433,6 +1449,8 @@ class arg_buffer_t {
       : m_src_op(src_op) {
     m_dst = dst_sym;
     m_reg_value = ptx_reg_t();
+    m_param_value = NULL;
+    m_param_bytes = 0;
     if (dst_sym->is_reg()) {
       m_is_reg = true;
       m_is_param = false;
@@ -1451,6 +1469,9 @@ class arg_buffer_t {
                void *source_param_value_array, unsigned array_size)
       : m_src_op(src_op) {
     m_dst = dst_sym;
+    m_reg_value = ptx_reg_t();
+    m_param_value = NULL;
+    m_param_bytes = 0;
     if (dst_sym->is_reg()) {
       m_is_reg = true;
       m_is_param = false;

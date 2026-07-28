@@ -170,8 +170,10 @@ class cuda_runtime_api {
   std::map<unsigned long long, size_t> g_mallocPtr_Size;
   // maps sm version number to set of filenames
   std::map<unsigned, std::set<std::string> > version_filename;
-  std::map<void *, void **> pinned_memory;  // support for pinned memories added
+  std::map<void *, void *> pinned_memory;
   std::map<void *, size_t> pinned_memory_size;
+  std::map<int, size_t> device_limits;
+  unsigned int device_flags = 0;
   int g_active_device;  // active gpu that runs the code
   // backward pointer
   class gpgpu_context *gpgpu_ctx;

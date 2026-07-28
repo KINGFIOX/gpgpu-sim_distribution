@@ -885,6 +885,31 @@ void abs_impl(const ptx_instruction *pI, ptx_thread_info *thread) {
   thread->set_operand_value(dst, d, i_type, thread, pI);
 }
 
+static int set_ptx_rounding_mode(unsigned rounding_mode) {
+  int original_mode = fegetround();
+  int host_mode;
+  switch (rounding_mode) {
+    case RN_OPTION:
+      host_mode = FE_TONEAREST;
+      break;
+    case RZ_OPTION:
+      host_mode = FE_TOWARDZERO;
+      break;
+    case RM_OPTION:
+      host_mode = FE_DOWNWARD;
+      break;
+    case RP_OPTION:
+      host_mode = FE_UPWARD;
+      break;
+    default:
+      assert(0);
+      host_mode = FE_TONEAREST;
+      break;
+  }
+  assert(fesetround(host_mode) == 0);
+  return original_mode;
+}
+
 void add_impl(const ptx_instruction *pI, ptx_thread_info *thread) {
   ptx_reg_t src1_data, src2_data, data;
   int overflow = 0;
@@ -898,18 +923,7 @@ void add_impl(const ptx_instruction *pI, ptx_thread_info *thread) {
   src1_data = thread->get_operand_value(src1, dst, i_type, thread, 1);
   src2_data = thread->get_operand_value(src2, dst, i_type, thread, 1);
 
-  unsigned rounding_mode = pI->rounding_mode();
-  int orig_rm = fegetround();
-  switch (rounding_mode) {
-    case RN_OPTION:
-      break;
-    case RZ_OPTION:
-      fesetround(FE_TOWARDZERO);
-      break;
-    default:
-      assert(0);
-      break;
-  }
+  int orig_rm = set_ptx_rounding_mode(pI->rounding_mode());
 
   switch (i_type) {
     case S8_TYPE:
@@ -2036,9 +2050,24 @@ void call_impl(const ptx_instruction *pI, ptx_thread_info *thread) {
   static unsigned call_uid_next = 1;
 
   const operand_info &target = pI->func_addr();
-  assert(target.is_function_address());
-  const symbol *func_addr = target.get_symbol();
-  function_info *target_func = func_addr->get_pc();
+  function_info *target_func = NULL;
+  if (target.is_function_address()) {
+    const symbol *func_addr = target.get_symbol();
+    target_func = func_addr->get_pc();
+  } else {
+    ptx_reg_t target_pc =
+        thread->get_operand_value(target, target, B64_TYPE, thread, 1);
+    std::map<unsigned, function_info *>::iterator target_info =
+        thread->get_gpu()->gpgpu_ctx->func_sim->g_pc_to_finfo.find(
+            (unsigned)target_pc.u64);
+    if (target_info ==
+        thread->get_gpu()->gpgpu_ctx->func_sim->g_pc_to_finfo.end()) {
+      printf("GPGPU-Sim PTX: unknown indirect call target 0x%llx\n",
+             (unsigned long long)target_pc.u64);
+      abort();
+    }
+    target_func = target_info->second;
+  }
   if (target_func->is_pdom_set()) {
     printf("GPGPU-Sim PTX: PDOM analysis already done for %s \n",
            target_func->get_name().c_str());
@@ -2076,7 +2105,31 @@ void call_impl(const ptx_instruction *pI, ptx_thread_info *thread) {
 
   // handle intrinsic functions
   std::string fname = target_func->get_name();
-  if (fname == "vprintf") {
+  if (fname == "malloc") {
+    assert(target_func->has_return() && target_func->num_args() == 1);
+    const operand_info &size_op = pI->operand_lookup(2);
+    assert(size_op.is_param_local());
+    unsigned long long allocation_size = 0;
+    addr_t size_addr = thread->get_local_mem_stack_pointer() +
+                       size_op.get_symbol()->get_address();
+    thread->m_local_mem->read(size_addr, sizeof(allocation_size),
+                              &allocation_size);
+
+    unsigned long long allocation = reinterpret_cast<unsigned long long>(
+        thread->get_gpu()->gpu_malloc(allocation_size));
+    const operand_info &return_op = pI->operand_lookup(0);
+    assert(return_op.is_param_local());
+    addr_t return_addr = thread->get_local_mem_stack_pointer() +
+                         return_op.get_symbol()->get_address();
+    thread->m_local_mem->write(return_addr, sizeof(allocation), &allocation,
+                               NULL, NULL);
+    return;
+  } else if (fname == "free") {
+    assert(!target_func->has_return() && target_func->num_args() == 1);
+    // The simulator's global allocator is monotonic, so device free currently
+    // releases no address space. The allocation remains valid for this run.
+    return;
+  } else if (fname == "vprintf") {
     gpgpusim_cuda_vprintf(pI, thread, target_func);
     return;
   }
@@ -3007,6 +3060,7 @@ void div_impl(const ptx_instruction *pI, ptx_thread_info *thread) {
 
   ptx_reg_t src1_data = thread->get_operand_value(src1, dst, i_type, thread, 1);
   ptx_reg_t src2_data = thread->get_operand_value(src2, dst, i_type, thread, 1);
+  int orig_rm = set_ptx_rounding_mode(pI->rounding_mode());
 
   switch (i_type) {
     case S8_TYPE:
@@ -3059,6 +3113,7 @@ void div_impl(const ptx_instruction *pI, ptx_thread_info *thread) {
       assert(0);
       break;
   }
+  fesetround(orig_rm);
   thread->set_operand_value(dst, data, i_type, thread, pI);
 }
 
@@ -3788,17 +3843,7 @@ void mad_def(const ptx_instruction *pI, ptx_thread_info *thread,
       // assert(0);
       // break;
       assert(use_carry == false);
-      int orig_rm = fegetround();
-      switch (rounding_mode) {
-        case RN_OPTION:
-          break;
-        case RZ_OPTION:
-          fesetround(FE_TOWARDZERO);
-          break;
-        default:
-          assert(0);
-          break;
-      }
+      int orig_rm = set_ptx_rounding_mode(rounding_mode);
       d.f16 = a.f16 * b.f16 + c.f16;
       if (pI->saturation_mode()) {
         if (d.f16 < 0)
@@ -3811,17 +3856,7 @@ void mad_def(const ptx_instruction *pI, ptx_thread_info *thread,
     }
     case F32_TYPE: {
       assert(use_carry == false);
-      int orig_rm = fegetround();
-      switch (rounding_mode) {
-        case RN_OPTION:
-          break;
-        case RZ_OPTION:
-          fesetround(FE_TOWARDZERO);
-          break;
-        default:
-          // assert(0);
-          break;
-      }
+      int orig_rm = set_ptx_rounding_mode(rounding_mode);
       d.f32 = a.f32 * b.f32 + c.f32;
       if (pI->saturation_mode()) {
         if (d.f32 < 0)
@@ -3835,17 +3870,7 @@ void mad_def(const ptx_instruction *pI, ptx_thread_info *thread,
     case F64_TYPE:
     case FF64_TYPE: {
       assert(use_carry == false);
-      int orig_rm = fegetround();
-      switch (rounding_mode) {
-        case RN_OPTION:
-          break;
-        case RZ_OPTION:
-          fesetround(FE_TOWARDZERO);
-          break;
-        default:
-          assert(0);
-          break;
-      }
+      int orig_rm = set_ptx_rounding_mode(rounding_mode);
       d.f64 = a.f64 * b.f64 + c.f64;
       if (pI->saturation_mode()) {
         if (d.f64 < 0)
@@ -4202,17 +4227,7 @@ void mul_impl(const ptx_instruction *pI, ptx_thread_info *thread) {
     case F16_TYPE: {
       // assert(0);
       // break;
-      int orig_rm = fegetround();
-      switch (rounding_mode) {
-        case RN_OPTION:
-          break;
-        case RZ_OPTION:
-          fesetround(FE_TOWARDZERO);
-          break;
-        default:
-          assert(0);
-          break;
-      }
+      int orig_rm = set_ptx_rounding_mode(rounding_mode);
 
       d.f16 = a.f16 * b.f16;
 
@@ -4226,17 +4241,7 @@ void mul_impl(const ptx_instruction *pI, ptx_thread_info *thread) {
       break;
     }
     case F32_TYPE: {
-      int orig_rm = fegetround();
-      switch (rounding_mode) {
-        case RN_OPTION:
-          break;
-        case RZ_OPTION:
-          fesetround(FE_TOWARDZERO);
-          break;
-        default:
-          assert(0);
-          break;
-      }
+      int orig_rm = set_ptx_rounding_mode(rounding_mode);
 
       d.f32 = a.f32 * b.f32;
 
@@ -4251,17 +4256,7 @@ void mul_impl(const ptx_instruction *pI, ptx_thread_info *thread) {
     }
     case F64_TYPE:
     case FF64_TYPE: {
-      int orig_rm = fegetround();
-      switch (rounding_mode) {
-        case RN_OPTION:
-          break;
-        case RZ_OPTION:
-          fesetround(FE_TOWARDZERO);
-          break;
-        default:
-          assert(0);
-          break;
-      }
+      int orig_rm = set_ptx_rounding_mode(rounding_mode);
       d.f64 = a.f64 * b.f64;
       if (pI->saturation_mode()) {
         if (d.f64 < 0)
@@ -5501,6 +5496,7 @@ void sqrt_impl(const ptx_instruction *pI, ptx_thread_info *thread) {
 
   unsigned i_type = pI->get_type();
   a = thread->get_operand_value(src1, dst, i_type, thread, 1);
+  int orig_rm = set_ptx_rounding_mode(pI->rounding_mode());
 
   switch (i_type) {
     case F32_TYPE:
@@ -5521,6 +5517,7 @@ void sqrt_impl(const ptx_instruction *pI, ptx_thread_info *thread) {
       assert(0);
       break;
   }
+  fesetround(orig_rm);
 
   thread->set_operand_value(dst, d, i_type, thread, pI);
 }
@@ -5594,6 +5591,7 @@ void sub_impl(const ptx_instruction *pI, ptx_thread_info *thread) {
   unsigned i_type = pI->get_type();
   ptx_reg_t src1_data = thread->get_operand_value(src1, dst, i_type, thread, 1);
   ptx_reg_t src2_data = thread->get_operand_value(src2, dst, i_type, thread, 1);
+  int orig_rm = set_ptx_rounding_mode(pI->rounding_mode());
 
   // performs addition. Sets carry and overflow if needed.
   // the constant is added in during subtraction so the carry bit is set
@@ -5661,6 +5659,7 @@ void sub_impl(const ptx_instruction *pI, ptx_thread_info *thread) {
       assert(0);
       break;
   }
+  fesetround(orig_rm);
 
   thread->set_operand_value(dst, data, i_type, thread, pI, overflow, carry);
 }

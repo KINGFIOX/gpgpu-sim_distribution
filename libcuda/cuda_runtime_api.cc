@@ -191,6 +191,7 @@ struct _cuda_device_id *gpgpu_context::GPGPUSim_Init() {
     prop->multiProcessorCount = the_gpu->get_config().num_shader();
     prop->maxThreadsPerMultiProcessor = the_gpu->threads_per_core();
     prop->computeMode = cudaComputeModeDefault;
+    prop->canMapHostMemory = 1;
     the_gpu->set_prop(prop);
     the_gpgpusim->the_cude_device = new _cuda_device_id(the_gpu);
     the_device = the_gpgpusim->the_cude_device;
@@ -325,6 +326,13 @@ __host__ cudaError_t CUDARTAPI cudaDeviceGetLimitInternal(
   if (g_debug_execution >= 3) {
     announce_call(__my_func__);
   }
+  if (!pValue) return g_last_cudaError = cudaErrorInvalidValue;
+  std::map<int, size_t>::const_iterator configured_limit =
+      ctx->api->device_limits.find(static_cast<int>(limit));
+  if (configured_limit != ctx->api->device_limits.end()) {
+    *pValue = configured_limit->second;
+    return g_last_cudaError = cudaSuccess;
+  }
   _cuda_device_id *dev = ctx->GPGPUSim_Init();
   const struct cudaDeviceProp *prop = dev->get_prop();
   const gpgpu_sim_config &config = dev->get_gpgpu()->get_config();
@@ -350,6 +358,36 @@ __host__ cudaError_t CUDARTAPI cudaDeviceGetLimitInternal(
     default:
       return g_last_cudaError = cudaErrorUnsupportedLimit;
   }
+  return g_last_cudaError = cudaSuccess;
+}
+
+__host__ cudaError_t CUDARTAPI cudaDeviceSetLimitInternal(
+    cudaLimit limit, size_t value, gpgpu_context *gpgpu_ctx = NULL) {
+  gpgpu_context *ctx;
+  if (gpgpu_ctx) {
+    ctx = gpgpu_ctx;
+  } else {
+    ctx = GPGPU_Context();
+  }
+  if (g_debug_execution >= 3) {
+    announce_call(__my_func__);
+  }
+
+  _cuda_device_id *dev = ctx->GPGPUSim_Init();
+  const struct cudaDeviceProp *prop = dev->get_prop();
+  switch (limit) {
+    case cudaLimitStackSize:
+    case cudaLimitMallocHeapSize:
+      break;
+    case cudaLimitDevRuntimeSyncDepth:
+    case cudaLimitDevRuntimePendingLaunchCount:
+      if (prop->major <= 2)
+        return g_last_cudaError = cudaErrorUnsupportedLimit;
+      break;
+    default:
+      return g_last_cudaError = cudaErrorUnsupportedLimit;
+  }
+  ctx->api->device_limits[static_cast<int>(limit)] = value;
   return g_last_cudaError = cudaSuccess;
 }
 
@@ -735,19 +773,25 @@ cudaError_t cudaHostGetDevicePointerInternal(void **pDevice, void *pHost,
   if (g_debug_execution >= 3) {
     announce_call(__my_func__);
   }
-  if (g_debug_execution >= 3) {
-    announce_call(__my_func__);
-  }
-  // only cpu memory allocation happens in cudaHostAlloc. Linking with device
-  // pointer to pinned memory happens here.
-  // TODO: once kernel is executed, the contents in global pointer of GPU must
-  // be copied back to CPU host pointer!
-  flags = 0;
+  if (!pDevice || !pHost || flags != 0)
+    return g_last_cudaError = cudaErrorInvalidValue;
+
+  // Host mappings use a simulator allocation and are synchronized back to the
+  // registered host range by the blocking synchronization APIs.
   CUctx_st *context = GPGPUSim_Context(ctx);
   gpgpu_t *gpu = context->get_device()->get_gpgpu();
   std::map<void *, size_t>::const_iterator i =
       ctx->api->pinned_memory_size.find(pHost);
-  assert(i != ctx->api->pinned_memory_size.end());
+  if (i == ctx->api->pinned_memory_size.end())
+    return g_last_cudaError = cudaErrorInvalidValue;
+
+  std::map<void *, void *>::const_iterator mapped =
+      ctx->api->pinned_memory.find(pHost);
+  if (mapped != ctx->api->pinned_memory.end()) {
+    *pDevice = mapped->second;
+    return g_last_cudaError = cudaSuccess;
+  }
+
   size_t size = i->second;
   *pDevice = gpu->gpu_malloc(size);
   if (g_debug_execution >= 3) {
@@ -756,12 +800,25 @@ cudaError_t cudaHostGetDevicePointerInternal(void **pDevice, void *pHost,
     ctx->api->g_mallocPtr_Size[(unsigned long long)*pDevice] = size;
   }
   if (*pDevice) {
-    ctx->api->pinned_memory[pHost] = pDevice;
-    // Copy contents in cpu to gpu
+    ctx->api->pinned_memory[pHost] = *pDevice;
     gpu->memcpy_to_gpu((size_t)*pDevice, pHost, size);
     return g_last_cudaError = cudaSuccess;
   } else {
     return g_last_cudaError = cudaErrorMemoryAllocation;
+  }
+}
+
+static void copy_mapped_memory_to_host(gpgpu_context *ctx) {
+  if (ctx->api->pinned_memory.empty()) return;
+
+  CUctx_st *context = GPGPUSim_Context(ctx);
+  gpgpu_t *gpu = context->get_device()->get_gpgpu();
+  for (const std::pair<void *const, void *> &mapping :
+       ctx->api->pinned_memory) {
+    std::map<void *, size_t>::const_iterator size =
+        ctx->api->pinned_memory_size.find(mapping.first);
+    if (size != ctx->api->pinned_memory_size.end())
+      gpu->memcpy_from_gpu(mapping.first, (size_t)mapping.second, size->second);
   }
 }
 
@@ -1161,16 +1218,19 @@ cudaError_t cudaHostAllocInternal(void **pHost, size_t bytes,
   if (g_debug_execution >= 3) {
     announce_call(__my_func__);
   }
+  if (!pHost || bytes == 0 || (flags & ~0x07U) != 0)
+    return g_last_cudaError = cudaErrorInvalidValue;
   *pHost = malloc(bytes);
   // need to track the size allocated so that cudaHostGetDevicePointer() can
   // function properly.
   // TODO: vary this function behavior based on flags value (following nvidia
   // documentation)
-  ctx->api->pinned_memory_size[*pHost] = bytes;
-  if (*pHost)
+  if (*pHost) {
+    ctx->api->pinned_memory_size[*pHost] = bytes;
     return g_last_cudaError = cudaSuccess;
-  else
+  } else {
     return g_last_cudaError = cudaErrorMemoryAllocation;
+  }
 }
 
 
@@ -1185,10 +1245,6 @@ size_t getMaxThreadsPerBlock(struct cudaFuncAttributes *attr,
 
   if (attr->numRegs && (prop.regsPerBlock / attr->numRegs) < max)
     max = prop.regsPerBlock / attr->numRegs;
-
-  if (attr->sharedSizeBytes &&
-      (prop.sharedMemPerBlock / attr->sharedSizeBytes) < max)
-    max = prop.sharedMemPerBlock / attr->sharedSizeBytes;
 
   return max;
 }
@@ -1513,6 +1569,7 @@ cudaThreadSynchronizeInternal(gpgpu_context *gpgpu_ctx = NULL) {
   }
   // Called on host side
   ctx->synchronize();
+  copy_mapped_memory_to_host(ctx);
   return g_last_cudaError = cudaSuccess;
 }
 
@@ -1529,6 +1586,7 @@ cudaDeviceSynchronizeInternal(gpgpu_context *gpgpu_ctx = NULL) {
   }
   // Blocks until the device has completed all preceding requested tasks
   ctx->synchronize();
+  copy_mapped_memory_to_host(ctx);
   return g_last_cudaError = cudaSuccess;
 }
 
@@ -1564,7 +1622,15 @@ __host__ cudaError_t CUDARTAPI cudaFreeHost(void *ptr) {
   if (g_debug_execution >= 3) {
     announce_call(__my_func__);
   }
-  free(ptr);  // this will crash the system if called twice
+  gpgpu_context *ctx = GPGPU_Context();
+  if (!ptr || ctx->api->pinned_memory_size.find(ptr) ==
+                  ctx->api->pinned_memory_size.end())
+    return g_last_cudaError = cudaErrorInvalidValue;
+  ctx->synchronize();
+  copy_mapped_memory_to_host(ctx);
+  ctx->api->pinned_memory.erase(ptr);
+  ctx->api->pinned_memory_size.erase(ptr);
+  free(ptr);
   return g_last_cudaError = cudaSuccess;
 }
 
@@ -1716,6 +1782,11 @@ __host__ cudaError_t CUDARTAPI cudaDeviceCanAccessPeer(int *canAccessPeer,
 __host__ cudaError_t CUDARTAPI cudaDeviceGetLimit(size_t *pValue,
                                                   cudaLimit limit) {
   return cudaDeviceGetLimitInternal(pValue, limit);
+}
+
+__host__ cudaError_t CUDARTAPI cudaDeviceSetLimit(cudaLimit limit,
+                                                  size_t value) {
+  return cudaDeviceSetLimitInternal(limit, value);
 }
 
 __host__ cudaError_t CUDARTAPI cudaGetChannelDesc(
@@ -2177,6 +2248,39 @@ cudaError_t CUDARTAPI cudaHostGetDevicePointer(void **pDevice, void *pHost,
   return cudaHostGetDevicePointerInternal(pDevice, pHost, flags);
 }
 
+cudaError_t CUDARTAPI cudaHostRegister(void *ptr, size_t size,
+                                      unsigned int flags) {
+  if (!ptr || size == 0 || (flags & ~0x0fU) != 0)
+    return g_last_cudaError = cudaErrorInvalidValue;
+  gpgpu_context *ctx = GPGPU_Context();
+  if (ctx->api->pinned_memory_size.find(ptr) !=
+      ctx->api->pinned_memory_size.end())
+    return g_last_cudaError = cudaErrorHostMemoryAlreadyRegistered;
+  ctx->api->pinned_memory_size[ptr] = size;
+  return g_last_cudaError = cudaSuccess;
+}
+
+cudaError_t CUDARTAPI cudaHostUnregister(void *ptr) {
+  if (!ptr) return g_last_cudaError = cudaErrorInvalidValue;
+  gpgpu_context *ctx = GPGPU_Context();
+  if (ctx->api->pinned_memory_size.find(ptr) ==
+      ctx->api->pinned_memory_size.end())
+    return g_last_cudaError = cudaErrorHostMemoryNotRegistered;
+  ctx->synchronize();
+  copy_mapped_memory_to_host(ctx);
+  ctx->api->pinned_memory.erase(ptr);
+  ctx->api->pinned_memory_size.erase(ptr);
+  return g_last_cudaError = cudaSuccess;
+}
+
+cudaError_t CUDARTAPI cudaSetDeviceFlags(unsigned int flags) {
+  unsigned int schedule = flags & cudaDeviceScheduleMask;
+  if ((flags & ~cudaDeviceMask) != 0 || schedule == 3 || schedule > 4)
+    return g_last_cudaError = cudaErrorInvalidValue;
+  GPGPU_Context()->api->device_flags = flags;
+  return g_last_cudaError = cudaSuccess;
+}
+
 cudaError_t CUDARTAPI cudaFuncGetAttributes(struct cudaFuncAttributes *attr,
                                             const void *hostFun) {
   return cudaFuncGetAttributesInternal(attr,
@@ -2247,7 +2351,11 @@ int cuda_runtime_api::load_static_globals(symbol_table *symtab,
       for (std::list<operand_info>::iterator i = init_list.begin();
            i != init_list.end(); i++) {
         operand_info op = *i;
-        ptx_reg_t value = op.get_literal_value();
+        ptx_reg_t value;
+        if (op.is_function_address())
+          value.u64 = op.get_symbol()->get_pc()->get_start_PC();
+        else
+          value = op.get_literal_value();
         assert((addr + offset + nbytes) <
                min_gaddr);  // min_gaddr is start of "heap" for cudaMalloc
         gpu->get_global_memory()->write(addr + offset, nbytes, &value, NULL,

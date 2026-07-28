@@ -197,6 +197,7 @@ breakaddr  TC; yylval->int_value = BREAKADDR_OP; return OPCODE;
 \.align TC; return ALIGN_DIRECTIVE;
 \.branchtargets TC; return BRANCHTARGETS_DIRECTIVE;
 \.byte	TC; return BYTE_DIRECTIVE; /* not in PTX 2.1 */
+[a-zA-Z_][a-zA-Z0-9_$]*[ \t]*:[ \t]*\.callprototype TC; return CALLPROTOTYPE_DIRECTIVE;
 \.calltargets TC; return CALLTARGETS_DIRECTIVE;
 \.const\[[0-9]+\] TC; yylval->int_value = atoi(yytext+7); return CONST_DIRECTIVE;
 \.const TC; yylval->int_value = 0; return CONST_DIRECTIVE;
@@ -254,6 +255,8 @@ breakaddr  TC; yylval->int_value = BREAKADDR_OP; return OPCODE;
 "%tid"  TC; yylval->int_value = TID_REG; return SPECIAL_REGISTER;
 "%warpid"  TC; yylval->int_value = WARPID_REG; return SPECIAL_REGISTER;
 "WARP_SZ"  TC; yylval->int_value = WARPSZ_REG; return SPECIAL_REGISTER;
+
+,[ \t]*prototype_[0-9]+ TC; return CALLPROTOTYPE_REF;
 
 [a-zA-Z_][a-zA-Z0-9_$]*  TC; yylval->string_value = strdup(yytext); return IDENTIFIER;
 [$%][a-zA-Z0-9_$]+  TC; yylval->string_value = strdup(yytext); return IDENTIFIER;
