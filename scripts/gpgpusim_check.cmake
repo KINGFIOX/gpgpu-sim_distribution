@@ -1,4 +1,3 @@
-find_package(Git REQUIRED)
 find_package(BISON REQUIRED)
 find_package(FLEX REQUIRED)
 find_package(ZLIB REQUIRED)

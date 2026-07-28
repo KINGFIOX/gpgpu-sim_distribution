@@ -34,7 +34,6 @@ The repository path in these commands is for SBSA systems. On x86-64, replace
 ## Build And Test
 
 ```bash
-git submodule update --init third_party/cuda-samples
 cmake -S . -B build \
   -DCMAKE_BUILD_TYPE=Release \
   -DCUDAToolkit_ROOT=/usr/local/cuda-11.8
@@ -65,14 +64,14 @@ command. Set `GPGPUSIM_BUILD_DIR` to select a different build directory.
 
 ## CUDA Samples Tests
 
-The CUDA Samples 11.8 dataset is pinned as a Git submodule. The six focused
-sample targets are enabled by default:
+Six focused CUDA Samples 11.8 tests and their upstream `Common` helpers are
+kept directly under `tests/cuda_samples`. They are built whenever
+`BUILD_TESTING` is enabled:
 
 ```bash
 cmake -S . -B build \
   -DCMAKE_BUILD_TYPE=Release \
-  -DCUDAToolkit_ROOT=/usr/local/cuda-11.8 \
-  -DGPGPUSIM_ENABLE_CUDA_SAMPLES=ON
+  -DCUDAToolkit_ROOT=/usr/local/cuda-11.8
 cmake --build build --parallel
 ctest --test-dir build -L cuda-samples-gate --output-on-failure
 ```
@@ -93,9 +92,8 @@ The `gpgpusim_add_cuda_sample()` helper accepts `FUNCTIONAL`, `PERFORMANCE`,
 
 ```cmake
 gpgpusim_add_cuda_sample(vectorAdd
-  Samples/0_Introduction/vectorAdd
   FUNCTIONAL PERFORMANCE
-  SOURCES vectorAdd.cu
+  SOURCES vectorAdd/vectorAdd.cu
   TIMEOUT 60)
 ```
 
@@ -106,7 +104,7 @@ applies independently to every registered mode.
 All device-code test binaries use `70-virtual`, so their CUDA fatbins contain
 host ELF plus PTX and no device ELF/cubin. Separate linkage and fatbin audits
 verify the simulator `libcudart` dependency and PTX-only output. The upstream
-sample sources are not modified.
+sample sources are not modified, and their license is retained alongside them.
 
 ## Libraries
 

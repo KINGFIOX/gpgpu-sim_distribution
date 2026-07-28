@@ -12,7 +12,6 @@ set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 
 option(GPGPUSIM_ENABLE_TRACE "Enable GPGPU-Sim debug tracing" ON)
-option(GPGPUSIM_ENABLE_CUDA_SAMPLES "Build the pinned CUDA Samples 11.8 regression tests" ON)
 
 include(scripts/gpgpusim_check.cmake)
 include(CTest)

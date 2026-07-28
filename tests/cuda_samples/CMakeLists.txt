@@ -1,31 +1,8 @@
-set(CUDA_SAMPLES_SOURCE_DIR
-        "${PROJECT_SOURCE_DIR}/third_party/cuda-samples")
-set(CUDA_SAMPLES_PINNED_COMMIT
-        "81992093d2b8c33cab22dbf6852c070c330f1715")
-
-if (NOT EXISTS "${CUDA_SAMPLES_SOURCE_DIR}/README.md")
-    message(FATAL_ERROR
-            "CUDA Samples is not initialized. Run: git submodule update --init "
-            "third_party/cuda-samples")
-endif ()
-
-execute_process(
-        COMMAND "${GIT_EXECUTABLE}" -C "${CUDA_SAMPLES_SOURCE_DIR}" rev-parse HEAD
-        OUTPUT_VARIABLE cuda_samples_commit
-        OUTPUT_STRIP_TRAILING_WHITESPACE
-        RESULT_VARIABLE cuda_samples_git_result)
-if (cuda_samples_git_result OR
-        NOT cuda_samples_commit STREQUAL CUDA_SAMPLES_PINNED_COMMIT)
-    message(FATAL_ERROR
-            "CUDA Samples must be at ${CUDA_SAMPLES_PINNED_COMMIT}; found "
-            "${cuda_samples_commit}")
-endif ()
-
-set(CUDA_SAMPLES_BINARY_DIR "${CMAKE_CURRENT_BINARY_DIR}/cuda_samples/bin")
-set(CUDA_SAMPLES_RUN_ROOT "${CMAKE_CURRENT_BINARY_DIR}/cuda_samples/run")
+set(CUDA_SAMPLES_BINARY_DIR "${CMAKE_CURRENT_BINARY_DIR}/bin")
+set(CUDA_SAMPLES_RUN_ROOT "${CMAKE_CURRENT_BINARY_DIR}/run")
 set(CUDA_SAMPLES_GATE_TARGETS "")
 
-function(gpgpusim_add_cuda_sample name sample_path)
+function(gpgpusim_add_cuda_sample name)
     cmake_parse_arguments(SAMPLE "FUNCTIONAL;PERFORMANCE" "TIMEOUT"
             "SOURCES;ARGS" ${ARGN})
     if (SAMPLE_UNPARSED_ARGUMENTS)
@@ -53,18 +30,9 @@ function(gpgpusim_add_cuda_sample name sample_path)
         set(SAMPLE_FUNCTIONAL TRUE)
     endif ()
 
-    set(sources "")
-    foreach (source IN LISTS SAMPLE_SOURCES)
-        set(source_path "${CUDA_SAMPLES_SOURCE_DIR}/${sample_path}/${source}")
-        if (NOT EXISTS "${source_path}")
-            message(FATAL_ERROR "CUDA sample source not found: ${source_path}")
-        endif ()
-        list(APPEND sources "${source_path}")
-    endforeach ()
-
-    add_executable(${name} ${sources})
+    add_executable(${name} ${SAMPLE_SOURCES})
     target_include_directories(${name} PRIVATE
-            "${CUDA_SAMPLES_SOURCE_DIR}/Common"
+            "${CMAKE_CURRENT_SOURCE_DIR}/Common"
             ${CUDAToolkit_INCLUDE_DIRS})
     target_link_libraries(${name} PRIVATE cudart)
     set_target_properties(${name} PROPERTIES
@@ -115,28 +83,27 @@ function(gpgpusim_add_cuda_sample name sample_path)
             ${CUDA_SAMPLES_GATE_TARGETS} ${name} PARENT_SCOPE)
 endfunction()
 
-gpgpusim_add_cuda_sample(deviceQuery Samples/1_Utilities/deviceQuery
+gpgpusim_add_cuda_sample(deviceQuery
         FUNCTIONAL PERFORMANCE
-        SOURCES deviceQuery.cpp)
-gpgpusim_add_cuda_sample(vectorAdd Samples/0_Introduction/vectorAdd
+        SOURCES deviceQuery/deviceQuery.cpp)
+gpgpusim_add_cuda_sample(vectorAdd
         FUNCTIONAL PERFORMANCE
-        SOURCES vectorAdd.cu)
-gpgpusim_add_cuda_sample(simpleTemplates Samples/0_Introduction/simpleTemplates
+        SOURCES vectorAdd/vectorAdd.cu)
+gpgpusim_add_cuda_sample(simpleTemplates
         FUNCTIONAL PERFORMANCE
-        SOURCES simpleTemplates.cu)
+        SOURCES simpleTemplates/simpleTemplates.cu)
 gpgpusim_add_cuda_sample(simpleVoteIntrinsics
-        Samples/0_Introduction/simpleVoteIntrinsics
         FUNCTIONAL PERFORMANCE
-        SOURCES simpleVoteIntrinsics.cu)
+        SOURCES simpleVoteIntrinsics/simpleVoteIntrinsics.cu)
 # The detailed 64 x 256 atomic workload takes about 330 seconds on this model.
 gpgpusim_add_cuda_sample(simpleAtomicIntrinsics
-        Samples/0_Introduction/simpleAtomicIntrinsics
         FUNCTIONAL PERFORMANCE
-        SOURCES simpleAtomicIntrinsics.cu simpleAtomicIntrinsics_cpu.cpp
+        SOURCES simpleAtomicIntrinsics/simpleAtomicIntrinsics.cu
+        simpleAtomicIntrinsics/simpleAtomicIntrinsics_cpu.cpp
         TIMEOUT 600)
-gpgpusim_add_cuda_sample(clock Samples/0_Introduction/clock
+gpgpusim_add_cuda_sample(clock
         FUNCTIONAL PERFORMANCE
-        SOURCES clock.cu)
+        SOURCES clock/clock.cu)
 
 set(cuda_samples_executables "")
 foreach (target IN LISTS CUDA_SAMPLES_GATE_TARGETS)
@@ -148,7 +115,7 @@ add_test(
         COMMAND "${CMAKE_COMMAND}"
         "-DEXECUTABLES=${cuda_samples_executable_arg}"
         "-DREADELF=${CMAKE_READELF}"
-        -P "${CMAKE_CURRENT_LIST_DIR}/linkage_audit.cmake")
+        -P "${CMAKE_CURRENT_SOURCE_DIR}/linkage_audit.cmake")
 set_tests_properties(cuda_samples_linkage_audit PROPERTIES
         LABELS "cuda-samples;cuda-samples-linkage")
 
@@ -157,6 +124,6 @@ add_test(
         COMMAND "${CMAKE_COMMAND}"
         "-DEXECUTABLES=${cuda_samples_executable_arg}"
         "-DCUOBJDUMP=${CUDAToolkit_BIN_DIR}/cuobjdump"
-        -P "${CMAKE_CURRENT_LIST_DIR}/fatbin_audit.cmake")
+        -P "${CMAKE_CURRENT_SOURCE_DIR}/fatbin_audit.cmake")
 set_tests_properties(cuda_samples_fatbin_audit PROPERTIES
         LABELS "cuda-samples;cuda-samples-fatbin")
