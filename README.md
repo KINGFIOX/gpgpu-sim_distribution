@@ -114,29 +114,18 @@ The build produces one unversioned implementation library for the in-tree
 tests and explicit CMake consumers:
 
 - `libcudart.so`
-- `libcuda.so` -> `libcudart.so`
 
 The Runtime API covers device discovery, allocation, copies, kernel launch,
 streams, events, synchronization, and the CUDA registration hooks required by
 `nvcc`-generated host code. The test suite runs CUDA Samples and a vector-add
 smoke program against this library.
 
-The Driver API is deliberately limited to the following delegated subset:
-
-- initialization, version, error, and device queries
-- context synchronization
-- device allocation and host/device/device copies
-- stream creation, destruction, and synchronization
-- event creation, record, synchronization, and destruction
-
-Applications that require other Driver API entry points are outside the
-supported surface.
-
 ## Deliberately Unsupported
 
 - PyTorch and other framework-specific compatibility APIs
 - device SASS/cubin execution or loading
 - cuBLAS, cuDNN, and other CUDA library emulation
+- CUDA Driver API
 - OpenCL
 - CUDA/OpenGL interoperability
 - SST/Balar integration
