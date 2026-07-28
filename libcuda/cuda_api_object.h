@@ -48,8 +48,7 @@ struct _cuda_device_id {
 };
 
 struct CUctx_st {
-  CUctx_st(_cuda_device_id *gpu) {
-    m_gpu = gpu;
+  CUctx_st(_cuda_device_id *gpu) : m_gpu(gpu), m_symbol_table(NULL) {
     m_binary_info.cmem = 0;
     m_binary_info.gmem = 0;
     no_of_ptx = 0;
@@ -57,14 +56,18 @@ struct CUctx_st {
 
   _cuda_device_id *get_device() { return m_gpu; }
 
-  void add_binary(symbol_table *symtab, unsigned fatbin_handle) {
-    m_code[fatbin_handle] = symtab;
-    m_last_fatbin_handle = fatbin_handle;
+  bool has_binary() const { return m_symbol_table != NULL; }
+
+  void add_binary(symbol_table *symtab) {
+    assert(symtab != NULL);
+    assert(m_symbol_table == NULL);
+    m_symbol_table = symtab;
   }
 
   void add_ptxinfo(const char *deviceFun,
                    const struct gpgpu_ptx_sim_info &info) {
-    symbol *s = m_code[m_last_fatbin_handle]->lookup(deviceFun);
+    assert(m_symbol_table != NULL);
+    symbol *s = m_symbol_table->lookup(deviceFun);
     assert(s != NULL);
     function_info *f = s->get_pc();
     assert(f != NULL);
@@ -75,10 +78,9 @@ struct CUctx_st {
     m_binary_info = info;
   }
 
-  void register_function(unsigned fatbin_handle, const char *hostFun,
-                         const char *deviceFun) {
-    if (m_code.find(fatbin_handle) != m_code.end()) {
-      symbol *s = m_code[fatbin_handle]->lookup(deviceFun);
+  void register_function(const char *hostFun, const char *deviceFun) {
+    if (m_symbol_table != NULL) {
+      symbol *s = m_symbol_table->lookup(deviceFun);
       if (s != NULL) {
         function_info *f = s->get_pc();
         assert(f != NULL);
@@ -87,10 +89,6 @@ struct CUctx_st {
         printf("Warning: cannot find deviceFun %s\n", deviceFun);
         m_kernel_lookup[hostFun] = NULL;
       }
-      //		assert( s != NULL );
-      //		function_info *f = s->get_pc();
-      //		assert( f != NULL );
-      //		m_kernel_lookup[hostFun] = f;
     } else {
       m_kernel_lookup[hostFun] = NULL;
     }
@@ -111,12 +109,9 @@ struct CUctx_st {
 
  private:
   _cuda_device_id *m_gpu;  // selected gpu
-  std::map<unsigned, symbol_table *>
-      m_code;  // fat binary handle => global symbol table
-  unsigned m_last_fatbin_handle;
-  std::map<const void *, function_info *>
-      m_kernel_lookup;  // unique id (CUDA app function address) => kernel entry
-                        // point
+  symbol_table *m_symbol_table;
+  // unique id (CUDA app function address) => kernel entry point
+  std::map<const void *, function_info *> m_kernel_lookup;
   struct gpgpu_ptx_sim_info m_binary_info;
 };
 
@@ -164,9 +159,9 @@ class cuda_runtime_api {
   }
   // global list
   std::list<kernel_config> g_cuda_launch_stack;
-  std::map<int, bool> fatbin_registered;
-  std::map<int, std::string> fatbinmap;
-  std::map<std::string, symbol_table *> name_symtab;
+  bool fatbin_registered = false;
+  void *fatbin_handle_token = NULL;
+  void **fatbin_handle() { return &fatbin_handle_token; }
   std::map<unsigned long long, size_t> g_mallocPtr_Size;
   // maps sm version number to set of filenames
   std::map<unsigned, std::set<std::string> > version_filename;
@@ -182,8 +177,6 @@ class cuda_runtime_api {
   void cuobjdumpInit();
   void extract_ptx_files_using_cuobjdump_internal(CUctx_st *context,
                                                   std::string &app_binary);
-  void cuobjdumpRegisterFatBinary(unsigned int handle, const char *filename,
-                                  CUctx_st *context);
   kernel_info_t *gpgpu_cuda_ptx_sim_init_grid(const char *kernel_key,
                                               gpgpu_ptx_sim_arg_list_t args,
                                               struct dim3 gridDim,

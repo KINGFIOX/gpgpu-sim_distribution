@@ -107,7 +107,6 @@
 #include <string.h>
 #include <time.h>
 #include <fstream>
-#include <functional>
 #include <iostream>
 #include <regex>
 #include <sstream>
@@ -271,13 +270,6 @@ std::string get_app_binary() {
   return self_exe_path;
 }
 
-//! Keep track of the association between filename and fatbin handle.
-void cuda_runtime_api::cuobjdumpRegisterFatBinary(unsigned int handle,
-                                                  const char *filename,
-                                                  CUctx_st *context) {
-  fatbinmap[handle] = filename;
-}
-
 /*******************************************************************************
  * Add internal cuda runtime API call to accept gpgpu_context *
  *******************************************************************************/
@@ -381,8 +373,7 @@ __host__ cudaError_t CUDARTAPI cudaDeviceSetLimitInternal(
       break;
     case cudaLimitDevRuntimeSyncDepth:
     case cudaLimitDevRuntimePendingLaunchCount:
-      if (prop->major <= 2)
-        return g_last_cudaError = cudaErrorUnsupportedLimit;
+      if (prop->major <= 2) return g_last_cudaError = cudaErrorUnsupportedLimit;
       break;
     default:
       return g_last_cudaError = cudaErrorUnsupportedLimit;
@@ -391,10 +382,17 @@ __host__ cudaError_t CUDARTAPI cudaDeviceSetLimitInternal(
   return g_last_cudaError = cudaSuccess;
 }
 
-// Internal implementation for cudaRegisterFatBiaryInternal
-void **cudaRegisterFatBiaryInternal_impl(
-    void *fatCubin, gpgpu_context *gpgpu_ctx,
-    std::function<void(gpgpu_context *)> ctx_cuobjdumpInit_func) {
+static void validate_fatbin_handle(cuda_runtime_api *api,
+                                   void **fatbin_handle) {
+  if (!api->fatbin_registered || fatbin_handle != api->fatbin_handle()) {
+    fprintf(stderr, "GPGPU-Sim PTX: invalid fat binary handle\n");
+    exit(EXIT_FAILURE);
+  }
+}
+
+void **cudaRegisterFatBinaryInternal(void *fatCubin,
+                                     gpgpu_context *gpgpu_ctx = NULL) {
+  (void)fatCubin;
   gpgpu_context *ctx;
   if (gpgpu_ctx) {
     ctx = gpgpu_ctx;
@@ -404,30 +402,18 @@ void **cudaRegisterFatBiaryInternal_impl(
   if (g_debug_execution >= 3) {
     announce_call(__my_func__);
   }
-  CUctx_st *context = GPGPUSim_Context(ctx);
-  static unsigned next_fat_bin_handle = 1;
-  const char *filename = "default";
+  if (ctx->api->fatbin_registered) {
+    fprintf(stderr,
+            "GPGPU-Sim PTX: multiple fat binaries are unsupported\n");
+    exit(EXIT_FAILURE);
+  }
 
-  // Associate each registered fat binary with the sections extracted from the
-  // application by the CUDA 11.8 cuobjdump tool.
-  unsigned long long fatbin_handle = next_fat_bin_handle++;
-  printf(
-      "GPGPU-Sim PTX: __cudaRegisterFatBinary, fatbin_handle = %llu, "
-      "filename=%s\n",
-      fatbin_handle, filename);
-  assert(fatbin_handle >= 1);
-  if (fatbin_handle == 1) ctx_cuobjdumpInit_func(ctx);
-  ctx->api->cuobjdumpRegisterFatBinary(fatbin_handle, filename, context);
-  return (void **)fatbin_handle;
-}
-
-void **cudaRegisterFatBinaryInternal(void *fatCubin,
-                                     gpgpu_context *gpgpu_ctx = NULL) {
-  auto ctx_cuobjdumpInit = [](gpgpu_context *ctx) {
-    ctx->api->cuobjdumpInit();
-  };
-  return cudaRegisterFatBiaryInternal_impl(fatCubin, gpgpu_ctx,
-                                           ctx_cuobjdumpInit);
+  ctx->api->fatbin_registered = true;
+  void **fatbin_handle = ctx->api->fatbin_handle();
+  printf("GPGPU-Sim PTX: __cudaRegisterFatBinary, fatbin_handle = %p\n",
+         (void *)fatbin_handle);
+  ctx->api->cuobjdumpInit();
+  return fatbin_handle;
 }
 
 void cudaRegisterFunctionInternal(void **fatCubinHandle, const char *hostFun,
@@ -444,14 +430,14 @@ void cudaRegisterFunctionInternal(void **fatCubinHandle, const char *hostFun,
   if (g_debug_execution >= 3) {
     announce_call(__my_func__);
   }
+  validate_fatbin_handle(ctx->api, fatCubinHandle);
   CUctx_st *context = GPGPUSim_Context(ctx);
-  unsigned fatbin_handle = (unsigned)(unsigned long long)fatCubinHandle;
   printf(
       "GPGPU-Sim PTX: __cudaRegisterFunction %s : hostFun 0x%p, "
-      "fatbin_handle = %u\n",
-      deviceFun, hostFun, fatbin_handle);
-  ctx->load_fatbin_ptx(fatbin_handle);
-  context->register_function(fatbin_handle, hostFun, deviceFun);
+      "fatbin_handle = %p\n",
+      deviceFun, hostFun, (void *)fatCubinHandle);
+  ctx->load_fatbin_ptx();
+  context->register_function(hostFun, deviceFun);
 }
 
 void cudaRegisterVarInternal(
@@ -470,6 +456,7 @@ void cudaRegisterVarInternal(
   if (g_debug_execution >= 3) {
     announce_call(__my_func__);
   }
+  validate_fatbin_handle(ctx->api, fatCubinHandle);
   printf(
       "GPGPU-Sim PTX: __cudaRegisterVar: hostVar = %p; deviceAddress = %s; "
       "deviceName = %s\n",
@@ -478,7 +465,7 @@ void cudaRegisterVarInternal(
       "GPGPU-Sim PTX: __cudaRegisterVar: Registering const memory space of %d "
       "bytes\n",
       size);
-  ctx->load_fatbin_ptx((unsigned)(unsigned long long)fatCubinHandle);
+  ctx->load_fatbin_ptx();
   fflush(stdout);
   if (constant && !global && !ext) {
     ctx->func_sim->gpgpu_ptx_sim_register_const_variable(hostVar, deviceName,
@@ -1020,8 +1007,8 @@ __host__ cudaError_t CUDARTAPI cudaMemcpy2DToArrayInternal(
     kind = (size_t)src >= GLOBAL_HEAP_START ? cudaMemcpyDeviceToDevice
                                             : cudaMemcpyHostToDevice;
   for (size_t row = 0; row < height; ++row) {
-    size_t row_dst = (size_t)dst->devPtr +
-                     (hOffset + row) * destination_pitch + wOffset;
+    size_t row_dst =
+        (size_t)dst->devPtr + (hOffset + row) * destination_pitch + wOffset;
     const void *row_src = static_cast<const char *>(src) + row * spitch;
     if (kind == cudaMemcpyHostToDevice)
       gpu->memcpy_to_gpu(row_dst, row_src, width);
@@ -1036,8 +1023,7 @@ __host__ cudaError_t CUDARTAPI cudaMemcpy2DToArrayInternal(
 
 __host__ cudaError_t CUDARTAPI cudaMemcpyToSymbolInternal(
     const char *symbol, const void *src, size_t count, size_t offset,
-    enum cudaMemcpyKind kind,
-    gpgpu_context *gpgpu_ctx = NULL) {
+    enum cudaMemcpyKind kind, gpgpu_context *gpgpu_ctx = NULL) {
   gpgpu_context *ctx;
   if (gpgpu_ctx) {
     ctx = gpgpu_ctx;
@@ -1061,8 +1047,7 @@ __host__ cudaError_t CUDARTAPI cudaMemcpyToSymbolInternal(
 
 __host__ cudaError_t CUDARTAPI cudaMemcpyFromSymbolInternal(
     void *dst, const char *symbol, size_t count, size_t offset,
-    enum cudaMemcpyKind kind,
-    gpgpu_context *gpgpu_ctx = NULL) {
+    enum cudaMemcpyKind kind, gpgpu_context *gpgpu_ctx = NULL) {
   gpgpu_context *ctx;
   if (gpgpu_ctx) {
     ctx = gpgpu_ctx;
@@ -1168,7 +1153,6 @@ cudaOccupancyMaxActiveBlocksPerMultiprocessorWithFlagsInternal(
   return g_last_cudaError = cudaErrorInvalidValue;
 }
 
-
 __host__ cudaError_t CUDARTAPI cudaMemsetInternal(
     void *mem, int c, size_t count, gpgpu_context *gpgpu_ctx = NULL) {
   gpgpu_context *ctx;
@@ -1232,7 +1216,6 @@ cudaError_t cudaHostAllocInternal(void **pHost, size_t bytes,
     return g_last_cudaError = cudaErrorMemoryAllocation;
   }
 }
-
 
 size_t getMaxThreadsPerBlock(struct cudaFuncAttributes *attr,
                              gpgpu_context *ctx) {
@@ -1475,7 +1458,6 @@ cudaFuncSetCacheConfigInternal(const char *func, enum cudaFuncCache cacheConfig,
   return g_last_cudaError = cudaSuccess;
 }
 
-
 CUevent_st *get_event(cudaEvent_t event) {
   unsigned event_uid;
   event_uid = event->get_uid();
@@ -1675,16 +1657,18 @@ __host__ cudaError_t CUDARTAPI cudaMemcpy2DToArray(
                                      height, kind);
 }
 
-__host__ cudaError_t CUDARTAPI cudaMemcpyToSymbol(
-    const void *symbol, const void *src, size_t count, size_t offset,
-    enum cudaMemcpyKind kind) {
+__host__ cudaError_t CUDARTAPI cudaMemcpyToSymbol(const void *symbol,
+                                                  const void *src, size_t count,
+                                                  size_t offset,
+                                                  enum cudaMemcpyKind kind) {
   return cudaMemcpyToSymbolInternal(static_cast<const char *>(symbol), src,
                                     count, offset, kind);
 }
 
-__host__ cudaError_t CUDARTAPI cudaMemcpyFromSymbol(
-    void *dst, const void *symbol, size_t count, size_t offset,
-    enum cudaMemcpyKind kind) {
+__host__ cudaError_t CUDARTAPI cudaMemcpyFromSymbol(void *dst,
+                                                    const void *symbol,
+                                                    size_t count, size_t offset,
+                                                    enum cudaMemcpyKind kind) {
   return cudaMemcpyFromSymbolInternal(dst, static_cast<const char *>(symbol),
                                       count, offset, kind);
 }
@@ -1709,7 +1693,6 @@ cudaError_t CUDARTAPI cudaOccupancyMaxActiveBlocksPerMultiprocessorWithFlags(
       numBlocks, static_cast<const char *>(hostFunc), blockSize,
       dynamicSMemSize, flags);
 }
-
 
 /*******************************************************************************
  *                                                                              *
@@ -1860,8 +1843,7 @@ __host__ cudaError_t CUDARTAPI cudaLaunch(const char *hostFun) {
 
 __host__ cudaError_t CUDARTAPI cudaLaunchKernel(const void *hostFun,
                                                 dim3 gridDim, dim3 blockDim,
-                                                void **args,
-                                                size_t sharedMem,
+                                                void **args, size_t sharedMem,
                                                 cudaStream_t stream) {
   return cudaLaunchKernelInternal(static_cast<const char *>(hostFun), gridDim,
                                   blockDim, const_cast<const void **>(args),
@@ -1878,8 +1860,8 @@ __host__ cudaError_t CUDARTAPI cudaStreamCreate(cudaStream_t *stream) {
   return cudaStreamCreateInternal(stream);
 }
 
-__host__ cudaError_t CUDARTAPI
-cudaStreamCreateWithFlags(cudaStream_t *stream, unsigned int flags) {
+__host__ cudaError_t CUDARTAPI cudaStreamCreateWithFlags(cudaStream_t *stream,
+                                                         unsigned int flags) {
   if (g_debug_execution >= 3) {
     announce_call(__my_func__);
   }
@@ -1953,8 +1935,7 @@ __host__ cudaError_t CUDARTAPI cudaEventSynchronize(cudaEvent_t event) {
   printf("GPGPU-Sim API: cudaEventSynchronize ** waiting for event\n");
   fflush(stdout);
   CUevent_st *e = (CUevent_st *)event;
-  while (!e->done())
-    ;
+  while (!e->done());
   printf("GPGPU-Sim API: cudaEventSynchronize ** event detected\n");
   fflush(stdout);
   return g_last_cudaError = cudaSuccess;
@@ -2034,7 +2015,8 @@ void cuda_runtime_api::extract_ptx_files_using_cuobjdump_internal(
 
   // only want file names
   snprintf(command, 1000,
-           GPGPUSIM_CUOBJDUMP " -lptx %s  | cut -d \":\" -f 2 | "
+           GPGPUSIM_CUOBJDUMP
+           " -lptx %s  | cut -d \":\" -f 2 | "
            "awk '{$1=$1}1' > %s",
            app_binary.c_str(), ptx_list_file_name);
   if (system(command) != 0) {
@@ -2051,8 +2033,8 @@ void cuda_runtime_api::extract_ptx_files_using_cuobjdump_internal(
       // int pos = line.find(std::string(get_app_binary_name(app_binary)));
       const char *ptx_file = line.c_str();
       printf("Extracting specific PTX file named %s \n", ptx_file);
-      snprintf(command, 1000, GPGPUSIM_CUOBJDUMP " -xptx %s %s",
-               ptx_file, app_binary.c_str());
+      snprintf(command, 1000, GPGPUSIM_CUOBJDUMP " -xptx %s %s", ptx_file,
+               app_binary.c_str());
       if (system(command) != 0) {
         printf("ERROR: command: %s failed \n", command);
         exit(0);
@@ -2062,7 +2044,9 @@ void cuda_runtime_api::extract_ptx_files_using_cuobjdump_internal(
   }
 
   if (!context->no_of_ptx) {
-    printf("WARNING: executable contains no extractable PTX (CDP may be enabled)\n");
+    printf(
+        "WARNING: executable contains no extractable PTX (CDP may be "
+        "enabled)\n");
   }
 
   std::ifstream infile(ptx_list_file_name);
@@ -2091,17 +2075,9 @@ void cuda_runtime_api::cuobjdumpInit() {
 }
 
 //! Load the PTX files selected by CUDA 11.8 cuobjdump.
-void gpgpu_context::load_fatbin_ptx(unsigned int handle) {
+void gpgpu_context::load_fatbin_ptx() {
   CUctx_st *context = GPGPUSim_Context(this);
-  if (api->fatbin_registered[handle]) return;
-  api->fatbin_registered[handle] = true;
-  std::string fname = api->fatbinmap[handle];
-
-  if (api->name_symtab.find(fname) != api->name_symtab.end()) {
-    symbol_table *symtab = api->name_symtab[fname];
-    context->add_binary(symtab, handle);
-    return;
-  }
+  if (context->has_binary()) return;
   symbol_table *symtab = NULL;
 
   // loops through all ptx files from smallest sm version to largest
@@ -2115,8 +2091,11 @@ void gpgpu_context::load_fatbin_ptx(unsigned int handle) {
       symtab = gpgpu_ptx_sim_load_ptx_from_filename(ptx_filename.c_str());
     }
   }
-  api->name_symtab[fname] = symtab;
-  context->add_binary(symtab, handle);
+  if (symtab == NULL) {
+    fprintf(stderr, "GPGPU-Sim PTX: no PTX symbol table was loaded\n");
+    exit(EXIT_FAILURE);
+  }
+  context->add_binary(symtab);
   api->load_static_globals(symtab, STATIC_ALLOC_LIMIT, 0xFFFFFFFF,
                            context->get_device()->get_gpgpu());
   api->load_constants(symtab, STATIC_ALLOC_LIMIT,
@@ -2249,7 +2228,7 @@ cudaError_t CUDARTAPI cudaHostGetDevicePointer(void **pDevice, void *pHost,
 }
 
 cudaError_t CUDARTAPI cudaHostRegister(void *ptr, size_t size,
-                                      unsigned int flags) {
+                                       unsigned int flags) {
   if (!ptr || size == 0 || (flags & ~0x0fU) != 0)
     return g_last_cudaError = cudaErrorInvalidValue;
   gpgpu_context *ctx = GPGPU_Context();
@@ -2316,7 +2295,6 @@ cudaFuncSetCacheConfig(const void *func, enum cudaFuncCache cacheConfig) {
   return cudaFuncSetCacheConfigInternal(static_cast<const char *>(func),
                                         cacheConfig);
 }
-
 }
 
 ////////
