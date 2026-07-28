@@ -163,8 +163,9 @@ class cuda_runtime_api {
   void *fatbin_handle_token = NULL;
   void **fatbin_handle() { return &fatbin_handle_token; }
   std::map<unsigned long long, size_t> g_mallocPtr_Size;
-  // maps sm version number to set of filenames
-  std::map<unsigned, std::set<std::string> > version_filename;
+  // only one version of PTX could be supported
+  unsigned ptx_version = 0;
+  std::set<std::string> ptx_filenames;
   std::map<void *, void *> pinned_memory;
   std::map<void *, size_t> pinned_memory_size;
   std::map<int, size_t> device_limits;

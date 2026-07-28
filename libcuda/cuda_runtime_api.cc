@@ -106,6 +106,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include <time.h>
+#include <cstdlib>
 #include <fstream>
 #include <iostream>
 #include <regex>
@@ -2060,11 +2061,14 @@ void cuda_runtime_api::extract_ptx_files_using_cuobjdump_internal(
       exit(0);
     }
     std::string vstr = line.substr(pos1 + 3, pos2 - pos1 - 3);
-    int version = atoi(vstr.c_str());
-    if (version_filename.find(version) == version_filename.end()) {
-      version_filename[version] = std::set<std::string>();
+    unsigned version = static_cast<unsigned>(atoi(vstr.c_str()));
+    if (ptx_filenames.empty()) {
+      ptx_version = version;
+    } else if (version != ptx_version) {
+      fprintf(stderr, "GPGPU-Sim PTX: multiple PTX versions are unsupported\n");
+      std::exit(EXIT_FAILURE);
     }
-    version_filename[version].insert(line);
+    ptx_filenames.insert(line);
   }
 }
 
@@ -2077,19 +2081,13 @@ void cuda_runtime_api::cuobjdumpInit() {
 //! Load the PTX files selected by CUDA 11.8 cuobjdump.
 void gpgpu_context::load_fatbin_ptx() {
   CUctx_st *context = GPGPUSim_Context(this);
-  if (context->has_binary()) return;
+  if (context->has_binary()) return;  // idempotent(幂等)
   symbol_table *symtab = NULL;
 
-  // loops through all ptx files from smallest sm version to largest
-  std::map<unsigned, std::set<std::string> >::iterator itr_m;
-  for (itr_m = api->version_filename.begin();
-       itr_m != api->version_filename.end(); itr_m++) {
-    std::set<std::string>::iterator itr_s;
-    for (itr_s = itr_m->second.begin(); itr_s != itr_m->second.end(); itr_s++) {
-      std::string ptx_filename = *itr_s;
-      printf("GPGPU-Sim PTX: Parsing %s\n", ptx_filename.c_str());
-      symtab = gpgpu_ptx_sim_load_ptx_from_filename(ptx_filename.c_str());
-    }
+  for (std::set<std::string>::const_iterator itr = api->ptx_filenames.begin();
+       itr != api->ptx_filenames.end(); ++itr) {
+    printf("GPGPU-Sim PTX: Parsing %s\n", itr->c_str());
+    symtab = gpgpu_ptx_sim_load_ptx_from_filename(itr->c_str());
   }
   if (symtab == NULL) {
     fprintf(stderr, "GPGPU-Sim PTX: no PTX symbol table was loaded\n");
@@ -2100,14 +2098,10 @@ void gpgpu_context::load_fatbin_ptx() {
                            context->get_device()->get_gpgpu());
   api->load_constants(symtab, STATIC_ALLOC_LIMIT,
                       context->get_device()->get_gpgpu());
-  for (itr_m = api->version_filename.begin();
-       itr_m != api->version_filename.end(); itr_m++) {
-    std::set<std::string>::iterator itr_s;
-    for (itr_s = itr_m->second.begin(); itr_s != itr_m->second.end(); itr_s++) {
-      std::string ptx_filename = *itr_s;
-      printf("GPGPU-Sim PTX: Loading PTXInfo from %s\n", ptx_filename.c_str());
-      gpgpu_ptx_info_load_from_filename(ptx_filename.c_str(), itr_m->first);
-    }
+  for (std::set<std::string>::const_iterator itr = api->ptx_filenames.begin();
+       itr != api->ptx_filenames.end(); ++itr) {
+    printf("GPGPU-Sim PTX: Loading PTXInfo from %s\n", itr->c_str());
+    gpgpu_ptx_info_load_from_filename(itr->c_str(), api->ptx_version);
   }
 }
 
