@@ -3,7 +3,6 @@
 
 #include <list>
 #include <map>
-#include <set>
 #include <string>
 
 #include <builtin_types.h>
@@ -51,7 +50,6 @@ struct CUctx_st {
   CUctx_st(_cuda_device_id *gpu) : m_gpu(gpu), m_symbol_table(NULL) {
     m_binary_info.cmem = 0;
     m_binary_info.gmem = 0;
-    no_of_ptx = 0;
   }
 
   _cuda_device_id *get_device() { return m_gpu; }
@@ -104,8 +102,6 @@ struct CUctx_st {
     assert(i != m_kernel_lookup.end());
     return i->second;
   }
-
-  int no_of_ptx;
 
  private:
   _cuda_device_id *m_gpu;  // selected gpu
@@ -163,9 +159,9 @@ class cuda_runtime_api {
   void *fatbin_handle_token = NULL;
   void **fatbin_handle() { return &fatbin_handle_token; }
   std::map<unsigned long long, size_t> g_mallocPtr_Size;
-  // only one version of PTX could be supported
+  // Only one PTX file is supported.
   unsigned ptx_version = 0;
-  std::set<std::string> ptx_filenames;
+  std::string ptx_filename;
   std::map<void *, void *> pinned_memory;
   std::map<void *, size_t> pinned_memory_size;
   std::map<int, size_t> device_limits;
@@ -176,8 +172,7 @@ class cuda_runtime_api {
   // member function list
 
   void cuobjdumpInit();
-  void extract_ptx_files_using_cuobjdump_internal(CUctx_st *context,
-                                                  std::string &app_binary);
+  void extract_ptx_file_using_cuobjdump(const std::string &app_binary);
   kernel_info_t *gpgpu_cuda_ptx_sim_init_grid(const char *kernel_key,
                                               gpgpu_ptx_sim_arg_list_t args,
                                               struct dim3 gridDim,

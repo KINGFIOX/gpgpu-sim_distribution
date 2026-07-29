@@ -102,16 +102,21 @@
  */
 
 #include <assert.h>
+#include <errno.h>
+#include <spawn.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <sys/wait.h>
 #include <time.h>
+#include <unistd.h>
+#include <charconv>
 #include <cstdlib>
-#include <fstream>
 #include <iostream>
 #include <regex>
 #include <sstream>
 #include <string>
+#include <vector>
 
 #include <cuda.h>
 #include <cuda_profiler_api.h>
@@ -132,6 +137,186 @@
 
 static_assert(CUDART_VERSION == 11080,
               "libcudart must be built with CUDA Toolkit 11.8 headers");
+
+extern char **environ;
+
+namespace {
+
+std::string run_process_or_exit(const std::vector<std::string> &arguments,
+                                bool capture_stdout) {
+  if (arguments.empty()) {
+    fprintf(stderr, "GPGPU-Sim PTX: cannot run an empty command\n");
+    std::exit(EXIT_FAILURE);
+  }
+
+  posix_spawn_file_actions_t file_actions;
+  int error = posix_spawn_file_actions_init(&file_actions);
+  if (error != 0) {
+    fprintf(stderr, "GPGPU-Sim PTX: posix_spawn setup failed: %s\n",
+            strerror(error));
+    std::exit(EXIT_FAILURE);
+  }
+
+  int stdout_pipe[2] = {-1, -1};
+  if (capture_stdout) {
+    if (pipe(stdout_pipe) != 0) {
+      error = errno;
+      posix_spawn_file_actions_destroy(&file_actions);
+      fprintf(stderr, "GPGPU-Sim PTX: pipe creation failed: %s\n",
+              strerror(error));
+      std::exit(EXIT_FAILURE);
+    }
+
+    error = posix_spawn_file_actions_addclose(&file_actions, stdout_pipe[0]);
+    if (error == 0) {
+      error = posix_spawn_file_actions_adddup2(&file_actions, stdout_pipe[1],
+                                               STDOUT_FILENO);
+    }
+    if (error == 0) {
+      error = posix_spawn_file_actions_addclose(&file_actions, stdout_pipe[1]);
+    }
+    if (error != 0) {
+      close(stdout_pipe[0]);
+      close(stdout_pipe[1]);
+      posix_spawn_file_actions_destroy(&file_actions);
+      fprintf(stderr, "GPGPU-Sim PTX: posix_spawn setup failed: %s\n",
+              strerror(error));
+      std::exit(EXIT_FAILURE);
+    }
+  }
+
+  std::vector<char *> argv;
+  argv.reserve(arguments.size() + 1);
+  for (std::vector<std::string>::const_iterator itr = arguments.begin();
+       itr != arguments.end(); ++itr) {
+    argv.push_back(const_cast<char *>(itr->c_str()));
+  }
+  argv.push_back(NULL);
+
+  pid_t child_pid = -1;
+  error = posix_spawn(&child_pid, argv[0], &file_actions, NULL, argv.data(),
+                      environ);
+  posix_spawn_file_actions_destroy(&file_actions);
+
+  if (capture_stdout) close(stdout_pipe[1]);
+  if (error != 0) {
+    if (capture_stdout) close(stdout_pipe[0]);
+    fprintf(stderr, "GPGPU-Sim PTX: failed to start %s: %s\n",
+            arguments[0].c_str(), strerror(error));
+    std::exit(EXIT_FAILURE);
+  }
+
+  std::string output;
+  int read_error = 0;
+  if (capture_stdout) {
+    char buffer[4096];
+    while (true) {
+      ssize_t bytes_read = read(stdout_pipe[0], buffer, sizeof(buffer));
+      if (bytes_read > 0) {
+        output.append(buffer, static_cast<size_t>(bytes_read));
+      } else if (bytes_read == 0) {
+        break;
+      } else if (errno != EINTR) {
+        read_error = errno;
+        break;
+      }
+    }
+    close(stdout_pipe[0]);
+  }
+
+  int child_status = 0;
+  pid_t waited_pid;
+  do {
+    waited_pid = waitpid(child_pid, &child_status, 0);
+  } while (waited_pid == -1 && errno == EINTR);
+
+  if (read_error != 0) {
+    fprintf(stderr, "GPGPU-Sim PTX: failed to read output from %s: %s\n",
+            arguments[0].c_str(), strerror(read_error));
+    std::exit(EXIT_FAILURE);
+  }
+  if (waited_pid == -1) {
+    fprintf(stderr, "GPGPU-Sim PTX: failed to wait for %s: %s\n",
+            arguments[0].c_str(), strerror(errno));
+    std::exit(EXIT_FAILURE);
+  }
+  if (WIFSIGNALED(child_status)) {
+    fprintf(stderr, "GPGPU-Sim PTX: %s terminated by signal %d\n",
+            arguments[0].c_str(), WTERMSIG(child_status));
+    std::exit(EXIT_FAILURE);
+  }
+  if (!WIFEXITED(child_status) || WEXITSTATUS(child_status) != 0) {
+    int exit_status =
+        WIFEXITED(child_status) ? WEXITSTATUS(child_status) : EXIT_FAILURE;
+    fprintf(stderr, "GPGPU-Sim PTX: %s exited with status %d\n",
+            arguments[0].c_str(), exit_status);
+    std::exit(EXIT_FAILURE);
+  }
+
+  return output;
+}
+
+std::string parse_single_ptx_filename(const std::string &cuobjdump_output) {
+  std::istringstream output(cuobjdump_output);
+  std::string ptx_filename;
+  std::string line;
+  while (std::getline(output, line)) {
+    if (line.empty()) continue;
+
+    std::string::size_type separator = line.find(':');
+    if (line.compare(0, 8, "PTX file") != 0 || separator == std::string::npos) {
+      fprintf(stderr, "GPGPU-Sim PTX: malformed cuobjdump output: %s\n",
+              line.c_str());
+      std::exit(EXIT_FAILURE);
+    }
+
+    std::string::size_type filename_begin =
+        line.find_first_not_of(" \t\r", separator + 1);
+    std::string::size_type filename_end = line.find_last_not_of(" \t\r");
+    if (filename_begin == std::string::npos || filename_end < filename_begin) {
+      fprintf(stderr, "GPGPU-Sim PTX: malformed cuobjdump PTX entry: %s\n",
+              line.c_str());
+      std::exit(EXIT_FAILURE);
+    }
+    if (!ptx_filename.empty()) {
+      fprintf(stderr, "GPGPU-Sim PTX: multiple PTX files are unsupported\n");
+      std::exit(EXIT_FAILURE);
+    }
+    ptx_filename =
+        line.substr(filename_begin, filename_end - filename_begin + 1);
+  }
+
+  if (ptx_filename.empty()) {
+    fprintf(stderr, "GPGPU-Sim PTX: executable contains no extractable PTX\n");
+    std::exit(EXIT_FAILURE);
+  }
+  return ptx_filename;
+}
+
+unsigned parse_ptx_version(const std::string &ptx_filename) {
+  std::string::size_type version_begin = ptx_filename.rfind("sm_");
+  std::string::size_type version_end = ptx_filename.find('.', version_begin);
+  if (version_begin == std::string::npos || version_end == std::string::npos) {
+    fprintf(stderr, "GPGPU-Sim PTX: invalid PTX filename: %s\n",
+            ptx_filename.c_str());
+    std::exit(EXIT_FAILURE);
+  }
+
+  version_begin += 3;
+  unsigned version = 0;
+  std::from_chars_result result =
+      std::from_chars(ptx_filename.data() + version_begin,
+                      ptx_filename.data() + version_end, version);
+  if (result.ec != std::errc() ||
+      result.ptr != ptx_filename.data() + version_end) {
+    fprintf(stderr, "GPGPU-Sim PTX: invalid PTX filename: %s\n",
+            ptx_filename.c_str());
+    std::exit(EXIT_FAILURE);
+  }
+  return version;
+}
+
+}  // namespace
 
 /*DEVICE_BUILTIN*/
 struct cudaArray {
@@ -2003,106 +2188,52 @@ int CUDARTAPI __cudaSynchronizeThreads(void **, void *) {
  *                                                                              *
  *******************************************************************************/
 
-// extracts all ptx files from binary and dumps into
-// prog_name.unique_no.sm_<>.ptx files
-void cuda_runtime_api::extract_ptx_files_using_cuobjdump_internal(
-    CUctx_st *context, std::string &app_binary) {
-  char command[1000];
+// Extracts the single supported PTX file from the application binary.
+void cuda_runtime_api::extract_ptx_file_using_cuobjdump(
+    const std::string &app_binary) {
+  std::string listing =
+      run_process_or_exit({GPGPUSIM_CUOBJDUMP, "-lptx", app_binary}, true);
+  std::string extracted_ptx_filename = parse_single_ptx_filename(listing);
+  unsigned extracted_ptx_version = parse_ptx_version(extracted_ptx_filename);
 
-  char ptx_list_file_name[1024];
-  snprintf(ptx_list_file_name, 1024, "_cuobjdump_list_ptx_XXXXXX");
-  int fd2 = mkstemp(ptx_list_file_name);
-  close(fd2);
+  printf("Extracting specific PTX file named %s \n",
+         extracted_ptx_filename.c_str());
+  run_process_or_exit(
+      {GPGPUSIM_CUOBJDUMP, "-xptx", extracted_ptx_filename, app_binary}, false);
 
-  // only want file names
-  snprintf(command, 1000,
-           GPGPUSIM_CUOBJDUMP
-           " -lptx %s  | cut -d \":\" -f 2 | "
-           "awk '{$1=$1}1' > %s",
-           app_binary.c_str(), ptx_list_file_name);
-  if (system(command) != 0) {
-    printf("WARNING: Failed to execute cuobjdump to get list of ptx files \n");
-    exit(0);
-  }
-
-  {
-    // based on the list above, dump ptx files individually. Format of dumped
-    // ptx file is prog_name.unique_no.sm_<>.ptx
-    std::ifstream infile(ptx_list_file_name);
-    std::string line;
-    while (std::getline(infile, line)) {
-      // int pos = line.find(std::string(get_app_binary_name(app_binary)));
-      const char *ptx_file = line.c_str();
-      printf("Extracting specific PTX file named %s \n", ptx_file);
-      snprintf(command, 1000, GPGPUSIM_CUOBJDUMP " -xptx %s %s", ptx_file,
-               app_binary.c_str());
-      if (system(command) != 0) {
-        printf("ERROR: command: %s failed \n", command);
-        exit(0);
-      }
-      context->no_of_ptx++;
-    }
-  }
-
-  if (!context->no_of_ptx) {
-    printf(
-        "WARNING: executable contains no extractable PTX (CDP may be "
-        "enabled)\n");
-  }
-
-  std::ifstream infile(ptx_list_file_name);
-  std::string line;
-  while (std::getline(infile, line)) {
-    // int pos = line.find(std::string(get_app_binary_name(app_binary)));
-    int pos1 = line.find("sm_");
-    int pos2 = line.find_last_of(".");
-    if (pos1 == std::string::npos && pos2 == std::string::npos) {
-      printf("ERROR: PTX list is not in correct format");
-      exit(0);
-    }
-    std::string vstr = line.substr(pos1 + 3, pos2 - pos1 - 3);
-    unsigned version = static_cast<unsigned>(atoi(vstr.c_str()));
-    if (ptx_filenames.empty()) {
-      ptx_version = version;
-    } else if (version != ptx_version) {
-      fprintf(stderr, "GPGPU-Sim PTX: multiple PTX versions are unsupported\n");
-      std::exit(EXIT_FAILURE);
-    }
-    ptx_filenames.insert(line);
-  }
+  ptx_filename = extracted_ptx_filename;
+  ptx_version = extracted_ptx_version;
 }
 
 void cuda_runtime_api::cuobjdumpInit() {
-  CUctx_st *context = GPGPUSim_Context(gpgpu_ctx);
   std::string app_binary = get_app_binary();
-  extract_ptx_files_using_cuobjdump_internal(context, app_binary);
+  extract_ptx_file_using_cuobjdump(app_binary);
 }
 
-//! Load the PTX files selected by CUDA 11.8 cuobjdump.
+//! Load the PTX file selected by CUDA 11.8 cuobjdump.
 void gpgpu_context::load_fatbin_ptx() {
   CUctx_st *context = GPGPUSim_Context(this);
   if (context->has_binary()) return;  // idempotent(幂等)
-  symbol_table *symtab = NULL;
-
-  for (std::set<std::string>::const_iterator itr = api->ptx_filenames.begin();
-       itr != api->ptx_filenames.end(); ++itr) {
-    printf("GPGPU-Sim PTX: Parsing %s\n", itr->c_str());
-    symtab = gpgpu_ptx_sim_load_ptx_from_filename(itr->c_str());
+  if (api->ptx_filename.empty()) {
+    fprintf(stderr, "GPGPU-Sim PTX: no PTX file was extracted\n");
+    std::exit(EXIT_FAILURE);
   }
+
+  printf("GPGPU-Sim PTX: Parsing %s\n", api->ptx_filename.c_str());
+  symbol_table *symtab =
+      gpgpu_ptx_sim_load_ptx_from_filename(api->ptx_filename.c_str());
   if (symtab == NULL) {
     fprintf(stderr, "GPGPU-Sim PTX: no PTX symbol table was loaded\n");
-    exit(EXIT_FAILURE);
+    std::exit(EXIT_FAILURE);
   }
   context->add_binary(symtab);
   api->load_static_globals(symtab, STATIC_ALLOC_LIMIT, 0xFFFFFFFF,
                            context->get_device()->get_gpgpu());
   api->load_constants(symtab, STATIC_ALLOC_LIMIT,
                       context->get_device()->get_gpgpu());
-  for (std::set<std::string>::const_iterator itr = api->ptx_filenames.begin();
-       itr != api->ptx_filenames.end(); ++itr) {
-    printf("GPGPU-Sim PTX: Loading PTXInfo from %s\n", itr->c_str());
-    gpgpu_ptx_info_load_from_filename(itr->c_str(), api->ptx_version);
-  }
+  printf("GPGPU-Sim PTX: Loading PTXInfo from %s\n", api->ptx_filename.c_str());
+  gpgpu_ptx_info_load_from_filename(api->ptx_filename.c_str(),
+                                    api->ptx_version);
 }
 
 extern "C" {
